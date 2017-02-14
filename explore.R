@@ -2,6 +2,8 @@ library(jsonlite)
 library(data.table)
 library(lubridate)
 library(caTools)
+library(caret)
+library(e1071)
 
 ny_lat <- 40.785091
 ny_lon <- -73.968285
@@ -17,11 +19,12 @@ rf_h2o = function(t1, t2){
   write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
   
   feature_names = names(t1)
-  feature_names = feature_names[! feature_names %in% c("ID", "created", "listing_id", "interest_level")]
+  feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level")]
   
   train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
   rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 50)
+  print(h2o.varimp(rf))
   res = as.data.frame(predict(rf, test_h2o))
   
   return(res)
@@ -56,7 +59,9 @@ t1[,":="(yday=yday(created)
 frq_features = table(unlist(df$features))
 top_features = names(frq_features[frq_features>1000]) 
 
-t1 = cbind(t1, t(sapply(df$features, function(x){as.numeric(top_features %in% x)})))
+t1 = cbind(t1, t(sapply(df$features, function(x){as.factor(top_features %in% x)})))
+t1$bathrooms = as.factor(t1$bathrooms)
+t1$bedrooms = as.factor(t1$bedrooms)
 
 set.seed(101) 
 
@@ -95,6 +100,8 @@ t2[,":="(yday=yday(created)
          ,hour=hour(created))]
 
 t2 = cbind(t2, t(sapply(df$features, function(x){as.numeric(top_features %in% x)})))
+t2$bathrooms = as.factor(t2$bathrooms)
+t2$bedrooms = as.factor(t2$bedrooms)
 
 res = rf_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(res$high), medium = as.vector(res$medium), low = as.vector(res$low))
