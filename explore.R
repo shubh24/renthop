@@ -1,11 +1,31 @@
 library(jsonlite)
 library(data.table)
-
+library(lubridate)
+library(caTools)
 
 ny_lat <- 40.785091
 ny_lon <- -73.968285
 
+library(h2o)
+h2o.init()
+
 df = fromJSON("train.json")
+
+rf_h2o = function(t1, t2){
+  
+  write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
+  write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
+  
+  feature_names = names(t1)
+  feature_names = feature_names[! feature_names %in% c("ID", "created", "listing_id", "interest_level")]
+  
+  train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
+  test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
+  rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 50)
+  res = as.data.frame(predict(rf, test_h2o))
+  
+  return(res)
+}
 
 t1 <- data.table(bathrooms=unlist(df$bathrooms)
                  ,bedrooms=unlist(df$bedrooms)
@@ -38,6 +58,14 @@ top_features = names(frq_features[frq_features>1000])
 
 t1 = cbind(t1, t(sapply(df$features, function(x){as.numeric(top_features %in% x)})))
 
+set.seed(101) 
+
+sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
+t1_train <- t1[sample, ]
+t1_test <- t1[-sample, ]
+
+res_val = rf_h2o(t1_train, t1_test)
+
 test = fromJSON("test.json")
 
 t2 <- data.table(bathrooms=unlist(test$bathrooms)
@@ -68,19 +96,7 @@ t2[,":="(yday=yday(created)
 
 t2 = cbind(t2, t(sapply(df$features, function(x){as.numeric(top_features %in% x)})))
 
-library(h2o)
-h2o.init()
-
-write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
-write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
-
-feature_names = names(t1)
-feature_names = feature_names[! feature_names %in% c("ID", "created", "listing_id", "interest_level")]
-
-train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
-test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 50)
-res = as.data.frame(predict(rf, test_h2o))
+res = rf_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(res$high), medium = as.vector(res$medium), low = as.vector(res$low))
-write.csv(pred, "submission_rf_h2o.csv", row.names = FALSE)
+write.csv(pred, "rf_h2o_1.csv", row.names = FALSE)
 
