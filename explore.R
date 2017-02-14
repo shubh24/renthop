@@ -63,8 +63,8 @@ feature_names = feature_names[! feature_names %in% c("ID", "created", "latitude"
 
 train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
 test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 5)
-res = predict(rf, test_h2o)
-pred <- data.frame(ID = as.vector(test_mod$ID), Footfall = as.vector(res))
-write.csv(pred, "submission_rf_h2o_2.csv", row.names = FALSE)
+rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 50)
+res = as.data.frame(predict(rf, test_h2o))
+pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(res$high), medium = as.vector(res$medium), low = as.vector(res$low))
+write.csv(pred, "submission_rf_h2o.csv", row.names = FALSE)
 
