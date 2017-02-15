@@ -25,18 +25,18 @@ rf_h2o = function(t1, t2){
     write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
     
     feature_names = names(t1)
-    feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level", "latitude", "longitude", "hour")]
+    feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level", "latitude", "longitude", "hour", "mday", "yday")]
     
     train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
     test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 50) 
+    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 100) 
     print(as.data.frame(h2o.varimp(rf))$variable)
     res = as.data.frame(predict(rf, test_h2o))
     
     return(res)
 }
 
-generate_df = function(df){
+generate_df = function(df, train_flag){
     t1 <- data.table(bathrooms=unlist(df$bathrooms)
                      ,bedrooms=unlist(df$bedrooms)
                      ,building_id=as.factor(unlist(df$building_id))
@@ -52,26 +52,38 @@ generate_df = function(df){
                                               df$latitude)
                      ,listing_id=unlist(df$listing_id)
                      ,manager_id=as.factor(unlist(df$manager_id))
-                     ,price=unlist(df$price),
-                     days_since = as.numeric(difftime(Sys.Date(), unlist(df$created)))
-                     ,interest_level=as.factor(unlist(df$interest_level))
+                     ,price=unlist(df$price)
+                     #,days_since = as.numeric(difftime(Sys.Date(), unlist(df$created)))
+                     #,interest_level=as.factor(unlist(df$interest_level))
                      # ,street_adress=as.factor(unlist(df$street_address)) # parse errors
     )
+    
+    if (train_flag == 1){
+      t1$interest_level = as.factor(unlist(df$interest_level))
+    }
     
     t1[,":="(yday=yday(created)
              ,month=lubridate::month(created)
              ,mday=mday(created)
              ,wday=wday(created)
              ,hour=lubridate::hour(created))]
+
+    t1$price_per_br = t1$price/t1$bedrooms
     
     t1$bathrooms = as.factor(t1$bathrooms)
     t1$bedrooms = as.factor(t1$bedrooms)
+    t1$wday = as.factor(t1$wday)
+    t1$month = as.factor(t1$month)
     
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
     top_streets = street_type$Var1[street_type$Freq > 200]
     t1$street_type = ifelse(t1$street_type %in% top_streets, yes = as.character(t1$street_type), no = "other")
     t1$display_address = NULL
+    
+    t1$zero_building_id = as.factor(t1$building_id == 0)
+    t1$zero_description = as.factor(t1$n_description == 0)
+    t1$zero_photos = as.factor(t1$n_photos == 0)
     
     buildings = as.data.frame(table(t1$building_id))
     buildings = buildings[-(buildings$Var1 == 0),]
@@ -91,7 +103,7 @@ generate_df = function(df){
     t1$manager_id = NULL
     
     t1 = cbind(t1, t(sapply(df$features, function(x){as.numeric(top_features %in% x)})))
-    
+
     for (i in c(1:25)){
       t1[[paste0("V", i)]] = as.factor(t1[[paste0("V", i)]])
     }
@@ -107,17 +119,16 @@ validate = function(t1){
   t1_test <- t1[-sample, ]
   
   res_val = rf_h2o(t1_train, t1_test)
-  confusionMatrix(table(res_val$predict, t1_test$interest_level))
+  print(confusionMatrix(table(res_val$predict, t1_test$interest_level)))
   MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")]))
   
 }
 
-t1 = generate_df(df)
-t2 = generate_df(test)
+t1 = generate_df(df, 1)
+t2 = generate_df(test, 0)
 
 validate(t1)
 
 res = rf_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(res$high), medium = as.vector(res$medium), low = as.vector(res$low))
-write.csv(pred, "rf_h2o_1.csv", row.names = FALSE)
-
+write.csv(pred, "rf_h2o_3.csv", row.names = FALSE)
