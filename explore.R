@@ -6,6 +6,7 @@ library(caret)
 library(e1071)
 library(MLmetrics)
 library(plyr)
+library(xgboost)
 
 ny_lat <- 40.785091
 ny_lon <- -73.968285
@@ -124,11 +125,94 @@ validate = function(t1){
   
 }
 
+validate_xgb = function(train_xgb, train_y){
+  set.seed(101) 
+  
+  sample <- sample.int(nrow(train_xgb), floor(.75*nrow(train_xgb)), replace = F)
+  train_xgb_train <- train_xgb[sample, ]
+  train_xgb_val <- train_xgb[-sample, ]
+  
+  train_y_train = train_y[1:nrow(train_xgb_train)]
+  
+  train_y_val = train_y[37015:length(train_y)]
+  train_y_val[train_y_val == 0] = "low"
+  train_y_val[train_y_val == 1] = "medium"
+  train_y_val[train_y_val == 2] = "high"
+  train_y_val = as.factor(train_y_val)
+  
+  pred_df_val = run_xgb(train_xgb_train, train_y_train, train_xgb_val)
+  MultiLogLoss(y_true = train_y_val, y_pred = as.matrix(pred_df_val[,c("high", "low", "medium")]))
+  
+}
+xgb = function(t1, train_flag){
+
+  train_x = t1
+  
+  dmy <- dummyVars(" ~ .", data = train_x)
+  t_xgb <- data.frame(predict(dmy, newdata = train_x))
+  
+  return(t_xgb)
+}
+
+get_train_y = function(t1){
+  
+  train_x$interest_level = NULL
+  
+  train_y = as.character(t1$interest_level)
+  
+  train_y[train_y == "low"] = 0
+  train_y[train_y == "medium"] = 1
+  train_y[train_y == "high"] = 2
+  
+  train_y = as.numeric(train_y)
+  
+  return(train_y)  
+}
+
+run_xgb = function(train_xgb, train_y, test_xgb){
+  
+  model = xgboost(data = as.matrix(train_xgb), 
+                  label = train_y,
+                  eta = 0.1,
+                  max_depth = 6, 
+                  nround=250, 
+                  subsample = 1,
+                  colsample_bytree = 0.7,
+                  seed = 100,
+                  eval_metric = "merror",
+                  objective = "multi:softprob",
+                  num_class = 3,
+                  missing = NaN,
+                  silent = 1)
+  
+  pred = predict(model,  as.matrix(test_xgb), missing=NaN)
+  
+  pred_matrix = matrix(pred, nrow = nrow(test_xgb), byrow = TRUE)
+  
+  pred_submission = cbind(test_xgb$listing_id, pred_matrix)
+  colnames(pred_submission) = c("listing_id", "low", "medium", "high")
+  
+  pred_df = as.data.frame(pred_submission)
+  return(pred_df)
+  
+}
+
 t1 = generate_df(df, 1)
 t2 = generate_df(test, 0)
 
+#Validation (rf)
 validate(t1)
 
+#Running xgboost
+train_xgb = xgb(t1)
+test_xgb = xgb(t2)
+train_y = get_train_y(t1)
+
+validate_xgb(train_xgb, train_y)
+pred_df = run_xgb(train_xgb, train_y, test_xgb)
+write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
+
+#Running RF
 res = rf_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(res$high), medium = as.vector(res$medium), low = as.vector(res$low))
 write.csv(pred, "rf_h2o_3.csv", row.names = FALSE)
