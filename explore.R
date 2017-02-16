@@ -122,7 +122,8 @@ validate = function(t1){
   res_val = rf_h2o(t1_train, t1_test)
   print(confusionMatrix(table(res_val$predict, t1_test$interest_level)))
   MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")]))
-  
+ 
+  return (res_val[, c("high", "low", "medium")]) 
 }
 
 validate_xgb = function(train_xgb, train_y){
@@ -143,8 +144,22 @@ validate_xgb = function(train_xgb, train_y){
   pred_df_val = run_xgb(train_xgb_train, train_y_train, train_xgb_val)
   MultiLogLoss(y_true = train_y_val, y_pred = as.matrix(pred_df_val[,c("high", "low", "medium")]))
   
+  return(pred_df_val[, c("high", "low", "medium")])
 }
 
+validate_ensemble = function(t1, train_xgb, train_y){
+  
+  rf_res = validate(t1)
+  xgb_res = validate_xgb(train_xgb, train_y)
+  
+  set.seed(101) 
+  sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
+  t1_test <- t1[-sample, ]
+  
+  ensemble_res = (rf_res + xgb_res)/2
+  MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(ensemble_res))
+  
+}
 xgb = function(t1, train_flag){
 
   train_x = t1
@@ -215,14 +230,14 @@ t1 = generate_df(df, 1)
 t2 = generate_df(test, 0)
 
 #Validation (rf)
-validate(t1)
+rf_val = validate(t1)
 
 #Running xgboost
 train_xgb = xgb(t1, 1)
 test_xgb = xgb(t2, 0)
 train_y = get_train_y(t1)
 
-validate_xgb(train_xgb, train_y)
+xgb_val = validate_xgb(train_xgb, train_y)
 pred_df = run_xgb(train_xgb, train_y, test_xgb)
 write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 
