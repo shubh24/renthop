@@ -142,7 +142,7 @@ validate_xgb = function(train_xgb, train_y){
   train_y_val = as.factor(train_y_val)
   
   pred_df_val = run_xgb(train_xgb_train, train_y_train, train_xgb_val)
-  MultiLogLoss(y_true = train_y_val, y_pred = as.matrix(pred_df_val[,c("high", "low", "medium")]))
+  print(MultiLogLoss(y_true = train_y_val, y_pred = as.matrix(pred_df_val[,c("high", "low", "medium")])))
   
   return(pred_df_val[, c("high", "low", "medium")])
 }
@@ -197,8 +197,9 @@ run_xgb = function(train_xgb, train_y, test_xgb){
   
   model = xgboost(data = as.matrix(train_xgb), 
                   label = train_y,
-                  eta = 0.3,
-                  max_depth = 4, 
+                  eta = 0.1,
+                  gamma = 1,
+                  max_depth = 6, 
                   nround=100, 
                   subsample = 1,
                   colsample_bytree = 0.7,
