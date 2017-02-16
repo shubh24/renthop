@@ -144,9 +144,18 @@ validate_xgb = function(train_xgb, train_y){
   MultiLogLoss(y_true = train_y_val, y_pred = as.matrix(pred_df_val[,c("high", "low", "medium")]))
   
 }
+
 xgb = function(t1, train_flag){
 
   train_x = t1
+  
+  train_x$yday = NULL
+  train_x$latitude = NULL
+  train_x$longitude = NULL
+  
+  if (train_flag == 1){
+    train_x$interest_level = NULL
+  }
   
   dmy <- dummyVars(" ~ .", data = train_x)
   t_xgb <- data.frame(predict(dmy, newdata = train_x))
@@ -155,8 +164,6 @@ xgb = function(t1, train_flag){
 }
 
 get_train_y = function(t1){
-  
-  train_x$interest_level = NULL
   
   train_y = as.character(t1$interest_level)
   
@@ -171,19 +178,26 @@ get_train_y = function(t1){
 
 run_xgb = function(train_xgb, train_y, test_xgb){
   
+  train_xgb$listing_id = NULL
+  
   model = xgboost(data = as.matrix(train_xgb), 
                   label = train_y,
-                  eta = 0.1,
-                  max_depth = 6, 
-                  nround=250, 
+                  eta = 0.3,
+                  max_depth = 4, 
+                  nround=100, 
                   subsample = 1,
                   colsample_bytree = 0.7,
                   seed = 100,
-                  eval_metric = "merror",
+                  eval_metric = "mlogloss",
                   objective = "multi:softprob",
                   num_class = 3,
                   missing = NaN,
                   silent = 1)
+  
+  # library(Ckmeans.1d.dp)
+  # names <- dimnames(data.matrix(train_xgb[,-1]))[[2]]
+  # importance_matrix = xgb.importance(names, model = model)
+  # xgb.plot.importance(importance_matrix[1:50,])
   
   pred = predict(model,  as.matrix(test_xgb), missing=NaN)
   
@@ -204,8 +218,8 @@ t2 = generate_df(test, 0)
 validate(t1)
 
 #Running xgboost
-train_xgb = xgb(t1)
-test_xgb = xgb(t2)
+train_xgb = xgb(t1, 1)
+test_xgb = xgb(t2, 0)
 train_y = get_train_y(t1)
 
 validate_xgb(train_xgb, train_y)
