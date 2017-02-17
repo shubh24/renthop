@@ -30,11 +30,44 @@ rf_h2o = function(t1, t2){
     
     train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
     test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 100) 
+    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 100)
     print(as.data.frame(h2o.varimp(rf))$variable)
     res = as.data.frame(predict(rf, test_h2o))
-    
+
     return(res)
+}
+
+gbm_h2o = function(t1, t2){
+  
+  write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
+  write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
+  
+  feature_names = names(t1)
+  feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level", "latitude", "longitude", "hour", "yday")]
+  
+  train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
+  test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
+  
+  gbm1 <- h2o.gbm(x = feature_names
+                ,y = "interest_level"
+                ,training_frame = train_h2o
+                ,distribution = "multinomial"
+                ,model_id = "gbm1"
+                #,nfolds = 5
+                ,ntrees = 2500
+                ,learn_rate = 0.01
+                ,max_depth = 7
+                ,min_rows = 20
+                ,sample_rate = 0.8
+                ,col_sample_rate = 0.7
+                ,stopping_rounds = 5
+                ,stopping_metric = "logloss"
+                ,stopping_tolerance = 0
+                ,seed=321)
+  
+  res = as.data.frame(predict(gbm1, test_h2o))
+  
+  return(res)
 }
 
 generate_df = function(df, train_flag){
@@ -121,9 +154,24 @@ validate = function(t1){
   
   res_val = rf_h2o(t1_train, t1_test)
   print(confusionMatrix(table(res_val$predict, t1_test$interest_level)))
-  MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")]))
+  print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
  
   return (res_val[, c("high", "low", "medium")]) 
+}
+
+validate_gbm = function(t1){
+  set.seed(101) 
+  
+  sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
+  t1_train <- t1[sample, ]
+  t1_test <- t1[-sample, ]
+  
+  res_val = gbm_h2o(t1_train, t1_test)
+  print(confusionMatrix(table(res_val$predict, t1_test$interest_level)))
+  print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
+  
+  return (res_val[, c("high", "low", "medium")]) 
+  
 }
 
 validate_xgb = function(train_xgb, train_y){
@@ -237,10 +285,15 @@ rf_val = validate(t1)
 train_xgb = xgb(t1, 1)
 test_xgb = xgb(t2, 0)
 train_y = get_train_y(t1)
-
 xgb_val = validate_xgb(train_xgb, train_y)
 pred_df = run_xgb(train_xgb, train_y, test_xgb)
 write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
+
+#Validation (gbm)
+gbm_val = validate_gbm(t1)
+pred_df_gbm = gbm_h2o(t1, t2)
+pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
+write.csv(pred, "rf_gbm_1.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
