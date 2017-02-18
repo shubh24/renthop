@@ -17,12 +17,16 @@ stop.append("renthop")
 stop.append("com")
 stop.append("br")
 stop.append("email")
+stop.append("call")
+stop.append("text")
 stop.append("closets")
 stop.append("floors")
+stop.append("new")
 stop.append("york")
+stop.append("steel")
+stop.append("website_redacted")
 
-
-tfidf = TfidfVectorizer(stop_words=stop,ngram_range=(1,2),lowercase=True,max_df = 0.70, min_df = 0.1, use_idf = True, max_features = 100)
+tfidf = TfidfVectorizer(stop_words=stop,ngram_range=(1,2),lowercase=True,max_df = 0.70, min_df = 0.1, use_idf = True, max_features = 20)
 
 tfs = tfidf.fit_transform(train_text)
 feature_names = tfidf.get_feature_names()
@@ -34,11 +38,10 @@ cv = sklearn.feature_extraction.text.CountVectorizer(vocabulary=feature_names)
 res = cv.fit_transform(train_text).toarray()
 
 col_names = []
-for i in range(0, 100):
-	print i, feature_names[i]
-	col_names.append("C"+str(i))
-# print res
 
+for i in range(0, 20):
+	print i, feature_names[i]
+	col_names.append(feature_names[i])
 
 import csv
 with open("count_vec.csv", "wb") as f:
