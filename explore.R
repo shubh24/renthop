@@ -16,6 +16,9 @@ h2o.init()
 
 df = fromJSON("train.json")
 test = fromJSON("test.json")
+cv = read.csv("count_vec.csv")
+cv_train <- cv[1:49352, ]
+cv_test <- cv[49353:124011, ]
 
 frq_features = table(unlist(df$features))
 top_features = names(frq_features[frq_features>1000]) 
@@ -94,6 +97,10 @@ generate_df = function(df, train_flag){
     
     if (train_flag == 1){
       t1$interest_level = as.factor(unlist(df$interest_level))
+      t1 = cbind(t1, cv_train)
+    }
+    else{
+      t1 = cbind(t1, cv_test)
     }
     
     t1[,":="(yday=yday(created)

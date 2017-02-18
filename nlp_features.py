@@ -33,11 +33,15 @@ feature_names = tfidf.get_feature_names()
 cv = sklearn.feature_extraction.text.CountVectorizer(vocabulary=feature_names)
 res = cv.fit_transform(train_text).toarray()
 
+col_names = []
 for i in range(0, 100):
 	print i, feature_names[i]
+	col_names.append("C"+str(i))
 # print res
+
 
 import csv
 with open("count_vec.csv", "wb") as f:
     writer = csv.writer(f)
+    writer.writerow(col_names)
     writer.writerows(res)
