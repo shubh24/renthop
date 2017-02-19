@@ -136,22 +136,22 @@ generate_df = function(df, train_flag){
     t1$zero_description = as.factor(t1$n_description == 0)
     t1$zero_photos = as.factor(t1$n_photos == 0)
     
-    # buildings = as.data.frame(table(t1$building_id))
-    # buildings = buildings[-(buildings$Var1 == 0),]
-    # 
-    # t1$top10buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
-    # t1$top20buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 20)$Var1, yes = 1, no = 0))
-    # t1$top50buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
-    # t1$top100buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
-    # t1$building_id = NULL
-    # 
-    # managers = as.data.frame(table(t1$manager_id))
-    # 
-    # t1$top10managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
-    # t1$top20managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 20)$Var1, yes = 1, no = 0))
-    # t1$top50managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
-    # t1$top100managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
-    # t1$manager_id = NULL
+    buildings = as.data.frame(table(t1$building_id))
+    buildings = buildings[-(buildings$Var1 == 0),]
+
+    t1$top10buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
+    t1$top20buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 20)$Var1, yes = 1, no = 0))
+    t1$top50buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
+    t1$top100buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
+    t1$building_id = NULL
+
+    managers = as.data.frame(table(t1$manager_id))
+
+    t1$top10managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
+    t1$top20managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 20)$Var1, yes = 1, no = 0))
+    t1$top50managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
+    t1$top100managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
+    t1$manager_id = NULL
     
     t1 = cbind(t1, t(sapply(df$features, function(x){as.numeric(top_features %in% x)})))
 
@@ -310,7 +310,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_2.csv", row.names = FALSE)
+write.csv(pred, "gbm_3.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
