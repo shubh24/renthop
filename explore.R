@@ -17,11 +17,15 @@ h2o.init()
 df = fromJSON("train.json")
 test = fromJSON("test.json")
 
-cv = read.csv("count_vec.csv")
-cv[cv > 1] = 1
-for (i in colnames(cv)){cv[[i]] = as.factor(cv[[i]])}
-cv_train <- cv[1:49352, ]
-cv_test <- cv[49353:124011, ]
+# cv = read.csv("count_vec.csv")
+# cv[cv > 1] = 1
+# for (i in colnames(cv)){cv[[i]] = as.factor(cv[[i]])}
+# cv_train <- cv[1:49352, ]
+# cv_test <- cv[49353:124011, ]
+
+nbd = read.csv("neighborhood.csv", stringsAsFactors = TRUE)
+nbd_train <- nbd[1:49352, ]
+nbd_test <- nbd[49353:124011, ]
 
 frq_features = table(unlist(df$features))
 top_features = names(frq_features[frq_features>1000]) 
@@ -102,9 +106,11 @@ generate_df = function(df, train_flag){
     if (train_flag == 1){
       t1$interest_level = as.factor(unlist(df$interest_level))
       # t1 = cbind(t1, cv_train)
+      t1 = cbind(t1, nbd_train)
     }
     else{
       # t1 = cbind(t1, cv_test)
+      t1 = cbind(t1, nbd_test)
     }
     
     t1[,":="(yday=yday(created)
@@ -304,7 +310,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "rf_gbm_1.csv", row.names = FALSE)
+write.csv(pred, "gbm_2.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
