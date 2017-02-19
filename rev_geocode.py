@@ -2,6 +2,8 @@ import json
 import urllib2
 import pandas as pd
 
+import reverse_geocoder as rg
+
 def get_geonames(lat, lng, types):
     url = 'http://maps.googleapis.com/maps/api/geocode/json' + \
             '?latlng={},{}&sensor=false'.format(lat, lng)
@@ -25,23 +27,31 @@ train_lat += test_df["latitude"].tolist()
 train_lon = train_df["longitude"].tolist()
 train_lon += test_df["longitude"].tolist()
 
-res = []
+lat_lon = [(train_lat[i], train_lon[i]) for i in range(0, len(train_lat))]
+print len(lat_lon)
+results = rg.search(lat_lon)
+print len(results)
+
+nbd = [[i['name']] for i in results]
+
 import csv
 
 with open("neighborhood.csv", "wb") as f:
 
-    writer = csv.writer(f)
+    writer = csv.writer(f, delimiter = ",")
+
     writer.writerow(["neighborhood"])
-
-    for i in range(0, len(train_lat)): 
+    writer.writerows(nbd)
+    
+    # for i in range(0, len(train_lat)): 
         
-        lat = train_lat[i]
-        lon = train_lon[i]
+    #     lat = train_lat[i]
+    #     lon = train_lon[i]
                         
-        geoname = get_geonames(lat, lon, types)[0]
+    #     geoname = get_geonames(lat, lon, types)[0]
 
-        common_types = set(geoname['types']).intersection(set(types))
-        # res.append(geoname['long_name'])
+    #     common_types = set(geoname['types']).intersection(set(types))
+    #     # res.append(geoname['long_name'])
 
-        print geoname["long_name"]
-        writer.writerow(geoname["long_name"])        
+    #     print geoname["long_name"]
+    #     writer.writerow(geoname["long_name"])        
