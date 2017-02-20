@@ -88,6 +88,7 @@ generate_df = function(df, train_flag){
                      ,created=as.POSIXct(unlist(df$created))
                      ,n_photos = as.numeric(sapply(df$photos, length))
                      ,n_description = log(as.numeric(sapply(df$description, nchar)))
+                     ,n_features = as.numeric(sapply(df$features, length))
                      # ,description=unlist(df$description) # parse errors
                      ,display_address=as.character(unlist(df$display_address)) # parse errors
                      ,latitude=unlist(df$latitude)
@@ -136,22 +137,22 @@ generate_df = function(df, train_flag){
     t1$zero_description = as.factor(t1$n_description == 0)
     t1$zero_photos = as.factor(t1$n_photos == 0)
     
-    buildings = as.data.frame(table(t1$building_id))
-    buildings = buildings[-(buildings$Var1 == 0),]
-
-    t1$top10buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
-    t1$top20buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 20)$Var1, yes = 1, no = 0))
-    t1$top50buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
-    t1$top100buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
-    t1$building_id = NULL
-
-    managers = as.data.frame(table(t1$manager_id))
-
-    t1$top10managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
-    t1$top20managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 20)$Var1, yes = 1, no = 0))
-    t1$top50managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
-    t1$top100managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
-    t1$manager_id = NULL
+    # buildings = as.data.frame(table(t1$building_id))
+    # buildings = buildings[-(buildings$Var1 == 0),]
+    # 
+    # t1$top10buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
+    # t1$top20buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 20)$Var1, yes = 1, no = 0))
+    # t1$top50buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
+    # t1$top100buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
+    # t1$building_id = NULL
+    # 
+    # managers = as.data.frame(table(t1$manager_id))
+    # 
+    # t1$top10managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
+    # t1$top20managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 20)$Var1, yes = 1, no = 0))
+    # t1$top50managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
+    # t1$top100managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
+    # t1$manager_id = NULL
     
     t1 = cbind(t1, t(sapply(df$features, function(x){as.numeric(top_features %in% x)})))
 
