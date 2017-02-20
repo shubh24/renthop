@@ -23,9 +23,8 @@ test = fromJSON("test.json")
 # cv_train <- cv[1:49352, ]
 # cv_test <- cv[49353:124011, ]
 
-nbd = read.csv("neighborhood.csv", stringsAsFactors = TRUE)
-nbd_train <- nbd[1:49352, ]
-nbd_test <- nbd[49353:124011, ]
+nbd_train = read.csv("neighborhood_train.csv", stringsAsFactors = TRUE)
+nbd_test = read.csv("neighborhood_test.csv", stringsAsFactors = TRUE)
 
 frq_features = table(unlist(df$features))
 top_features = names(frq_features[frq_features>1000]) 
@@ -64,15 +63,16 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 2500
+                ,ntrees = 200
                 ,learn_rate = 0.01
                 ,max_depth = 7
                 ,min_rows = 20
                 ,sample_rate = 0.8
+                ,score_tree_interval = 10
                 ,col_sample_rate = 0.7
                 ,stopping_rounds = 5
                 ,stopping_metric = "logloss"
-                ,stopping_tolerance = 0
+                ,stopping_tolerance = 1e-4
                 ,seed=321)
   
   print(as.data.frame(h2o.varimp(gbm1))$variable)
@@ -107,11 +107,11 @@ generate_df = function(df, train_flag){
     if (train_flag == 1){
       t1$interest_level = as.factor(unlist(df$interest_level))
       # t1 = cbind(t1, cv_train)
-      t1 = cbind(t1, nbd_train)
+      t1 = merge(t1, nbd_train, by = "listing_id")
     }
     else{
       # t1 = cbind(t1, cv_test)
-      t1 = cbind(t1, nbd_test)
+      t1 = merge(t1, nbd_test, by = "listing_id")
     }
     
     t1[,":="(yday=yday(created)
