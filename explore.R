@@ -39,7 +39,7 @@ rf_h2o = function(t1, t2){
     
     train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
     test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 100)
+    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 1000)
     print(as.data.frame(h2o.varimp(rf))$variable)
     res = as.data.frame(predict(rf, test_h2o))
 
@@ -63,7 +63,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 200
+                ,ntrees = 10000
                 ,learn_rate = 0.01
                 ,max_depth = 7
                 ,min_rows = 20
@@ -311,7 +311,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_3.csv", row.names = FALSE)
+write.csv(pred, "gbm_4.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
