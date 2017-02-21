@@ -4,6 +4,10 @@ library(lubridate)
 library(caTools)
 library(caret)
 library(e1071)
+library(magrittr)
+library(knitr)
+library(stringr)
+require(dplyr)
 library(MLmetrics)
 library(plyr)
 library(xgboost)
@@ -26,8 +30,30 @@ test = fromJSON("test.json")
 nbd_train = read.csv("neighborhood_train.csv", stringsAsFactors = TRUE)
 nbd_test = read.csv("neighborhood_test.csv", stringsAsFactors = TRUE)
 
-frq_features = table(unlist(df$features))
-top_features = names(frq_features[frq_features>1000]) 
+feature = as.data.frame(table(tolower(unlist(df$features))))
+feature$Var1 = as.character(feature$Var1)
+
+keywords = c("24", "court", "wood", "roof", "outdoor", "garden", "park", "bath", "actual", "allowed", "air", "doorman", "balcony", "available", "pool", "gym", "wifi", "fan", "playroom", "subway", "concierge", "fire", "fitness", "dish", "garage", "granite", "high", "laundry", "live", "fee", "war", "private", "lounge", "short", "spacious", "stainless", "storage", "terrace", "valet", "washer", "yoga")
+
+for (j in 1:length(keywords)){
+  key = keywords[j]
+  wood = feature %>% filter(str_detect(feature$Var1, key))
+  feature = rbind(feature, c(key, sum(wood$Freq)))
+  
+  for(i in 1:nrow(wood)){
+    feature = feature[!(feature$Var1 == wood$Var1[i]),]
+  }
+  feature$Freq = as.numeric(feature$Freq)
+}
+
+feature = feature$Var1[feature$Freq > 50]
+
+# # Laundry in unit INCLUDE THIS!
+# top_features %>%
+#   filter(str_detect(top_features, paste(c('laundry', 'dryer', 'washer'), collapse="|"))) %>%
+#   filter(!str_detect(top_features, "dishwasher")) %>%
+#   kable(caption = "Laundry in unit")
+
 
 rf_h2o = function(t1, t2){
   
@@ -35,11 +61,11 @@ rf_h2o = function(t1, t2){
     write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
     
     feature_names = names(t1)
-    feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level", "latitude", "longitude", "hour", "mday", "yday")]
+    feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level")]
     
     train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
     test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 1000)
+    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 200)
     print(as.data.frame(h2o.varimp(rf))$variable)
     res = as.data.frame(predict(rf, test_h2o))
 
@@ -52,7 +78,7 @@ gbm_h2o = function(t1, t2){
   write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
   
   feature_names = names(t1)
-  feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level", "latitude", "longitude", "hour", "yday")]
+  feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level")]
   
   train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
@@ -65,7 +91,7 @@ gbm_h2o = function(t1, t2){
                 #,nfolds = 5
                 ,ntrees = 10000
                 ,learn_rate = 0.01
-                ,max_depth = 7
+                ,max_depth = 5
                 ,min_rows = 20
                 ,sample_rate = 0.8
                 ,score_tree_interval = 10
@@ -126,11 +152,14 @@ generate_df = function(df, train_flag){
     t1$bedrooms = as.factor(t1$bedrooms)
     t1$wday = as.factor(t1$wday)
     t1$month = as.factor(t1$month)
+    t1$mday = as.factor(t1$mday)
+    t1$hour = as.factor(t1$hour)
+    t1$yday = as.factor(t1$yday)
     
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
     top_streets = street_type$Var1[street_type$Freq > 200]
-    t1$street_type = ifelse(t1$street_type %in% top_streets, yes = as.character(t1$street_type), no = "other")
+    t1$street_type = as.factor(ifelse(t1$street_type %in% top_streets, yes = as.character(t1$street_type), no = "other"))
     t1$display_address = NULL
     
     t1$zero_building_id = as.factor(t1$building_id == 0)
@@ -154,10 +183,10 @@ generate_df = function(df, train_flag){
     # t1$top100managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
     # t1$manager_id = NULL
     
-    t1 = cbind(t1, t(sapply(df$features, function(x){as.numeric(top_features %in% x)})))
+    t1 = cbind(t1, t(sapply(df$features, function(x){as.numeric(str_detect(tolower(x), feature))})))
 
-    for (i in c(1:25)){
-      t1[[paste0("V", i)]] = as.factor(t1[[paste0("V", i)]])
+    for (i in c(1:length(feature))){ #can this be factored in above?
+      t1[[paste0("V", str(i))]] = as.factor(t1[[paste0("V", str(i))]])
     }
     
     return (t1)
@@ -230,9 +259,9 @@ xgb = function(t1, train_flag){
 
   train_x = t1
   
-  train_x$yday = NULL
-  train_x$latitude = NULL
-  train_x$longitude = NULL
+  # train_x$yday = NULL
+  # train_x$latitude = NULL
+  # train_x$longitude = NULL
   
   if (train_flag == 1){
     train_x$interest_level = NULL
