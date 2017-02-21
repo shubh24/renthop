@@ -182,13 +182,7 @@ generate_df = function(df, train_flag){
     # t1$top50managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
     # t1$top100managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
     # t1$manager_id = NULL
-    
-    t1 = cbind(t1, t(sapply(df$features, function(x){as.numeric(str_detect(tolower(x), feature))})))
 
-    for (i in c(1:length(feature))){ #can this be factored in above?
-      t1[[paste0("V", str(i))]] = as.factor(t1[[paste0("V", str(i))]])
-    }
-    
     return (t1)
 }
 
@@ -323,7 +317,28 @@ run_xgb = function(train_xgb, train_y, test_xgb){
 }
 
 t1 = generate_df(df, 1)
+strdetect_df = data.frame()
+for (i in 1:nrow(t1)){
+  strdetect_df = rbind(strdetect_df, tryCatch(t(as.numeric(str_detect(tolower(df$features[i]), feature))), error = function(e){rep(0, length(feature))}))
+}
+
+for (i in c(1:length(feature))){ #can this be factored in above?
+  strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
+}
+
+t1 = cbind(t1, strdetect_df)
+
 t2 = generate_df(test, 0)
+strdetect_df_test = data.frame()
+for (i in 1:nrow(t2)){
+  strdetect_df_test = rbind(strdetect_df_test, tryCatch(t(as.numeric(str_detect(tolower(test$features[i]), feature))), error = function(e){rep(0, length(feature))}))
+}
+
+for (i in c(1:length(feature))){ #can this be factored in above?
+  strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
+}
+
+t2 = cbind(t2, strdetect_df_test)
 
 #Validation (rf)
 rf_val = validate(t1)
