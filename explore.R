@@ -21,11 +21,11 @@ h2o.init()
 df = fromJSON("train.json")
 test = fromJSON("test.json")
 
-# cv = read.csv("count_vec.csv")
-# cv[cv > 1] = 1
-# for (i in colnames(cv)){cv[[i]] = as.factor(cv[[i]])}
-# cv_train <- cv[1:49352, ]
-# cv_test <- cv[49353:124011, ]
+cv = read.csv("count_vec.csv")
+cv[cv > 1] = 1
+for (i in colnames(cv)){cv[[i]] = as.factor(cv[[i]])}
+cv_train <- cv[1:49352, ]
+cv_test <- cv[49353:124011, ]
 
 nbd_train = read.csv("neighborhood_train.csv", stringsAsFactors = TRUE)
 nbd_test = read.csv("neighborhood_test.csv", stringsAsFactors = TRUE)
@@ -89,7 +89,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 10000
+                ,ntrees = 100
                 ,learn_rate = 0.01
                 ,max_depth = 5
                 ,min_rows = 20
@@ -113,6 +113,7 @@ generate_df = function(df, train_flag){
                      ,building_id=as.factor(unlist(df$building_id))
                      ,created=as.POSIXct(unlist(df$created))
                      ,n_photos = as.numeric(sapply(df$photos, length))
+                     ,n_words = sapply(strsplit(as.character(df$description), "\\s+"), length)
                      ,n_description = log(as.numeric(sapply(df$description, nchar)))
                      ,n_features = as.numeric(sapply(df$features, length))
                      # ,description=unlist(df$description) # parse errors
@@ -132,11 +133,11 @@ generate_df = function(df, train_flag){
     
     if (train_flag == 1){
       t1$interest_level = as.factor(unlist(df$interest_level))
-      # t1 = cbind(t1, cv_train)
+      t1 = cbind(t1, cv_train)
       t1 = merge(t1, nbd_train, by = "listing_id")
     }
     else{
-      # t1 = cbind(t1, cv_test)
+      t1 = cbind(t1, cv_test)
       t1 = merge(t1, nbd_test, by = "listing_id")
     }
     
@@ -163,7 +164,7 @@ generate_df = function(df, train_flag){
     t1$display_address = NULL
     
     t1$zero_building_id = as.factor(t1$building_id == 0)
-    t1$zero_description = as.factor(t1$n_description == 0)
+    # t1$zero_description = as.factor(t1$n_description == 0)
     t1$zero_photos = as.factor(t1$n_photos == 0)
     
     # buildings = as.data.frame(table(t1$building_id))
@@ -317,27 +318,27 @@ run_xgb = function(train_xgb, train_y, test_xgb){
 }
 
 t1 = generate_df(df, 1)
-strdetect_df = data.frame()
-for (i in 1:nrow(t1)){
-  strdetect_df = rbind(strdetect_df, tryCatch(t(as.numeric(str_detect(tolower(df$features[i]), feature))), error = function(e){rep(0, length(feature))}))
-}
-
-for (i in c(1:length(feature))){ #can this be factored in above?
-  strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
-}
-
+# strdetect_df = data.frame()
+# for (i in 1:nrow(t1)){
+#   strdetect_df = rbind(strdetect_df, tryCatch(t(as.numeric(str_detect(tolower(df$features[i]), feature))), error = function(e){rep(0, length(feature))}))
+# }
+# 
+# for (i in c(1:length(feature))){ #can this be factored in above?
+#   strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
+# }
+strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
 t1 = cbind(t1, strdetect_df)
 
 t2 = generate_df(test, 0)
-strdetect_df_test = data.frame()
-for (i in 1:nrow(t2)){
-  strdetect_df_test = rbind(strdetect_df_test, tryCatch(t(as.numeric(str_detect(tolower(test$features[i]), feature))), error = function(e){rep(0, length(feature))}))
-}
-
-for (i in c(1:length(feature))){ #can this be factored in above?
-  strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
-}
-
+# strdetect_df_test = data.frame()
+# for (i in 1:nrow(t2)){
+#   strdetect_df_test = rbind(strdetect_df_test, tryCatch(t(as.numeric(str_detect(tolower(test$features[i]), feature))), error = function(e){rep(0, length(feature))}))
+# }
+# 
+# for (i in c(1:length(feature))){ #can this be factored in above?
+#   strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
+# }
+strdetect_df_test = read.csv("strdetect_test.csv", stringsAsFactors = TRUE)
 t2 = cbind(t2, strdetect_df_test)
 
 #Validation (rf)
@@ -355,7 +356,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_4.csv", row.names = FALSE)
+write.csv(pred, "gbm_5.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
