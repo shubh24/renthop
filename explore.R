@@ -89,7 +89,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 100
+                ,ntrees = 10000
                 ,learn_rate = 0.01
                 ,max_depth = 5
                 ,min_rows = 20
@@ -126,6 +126,11 @@ generate_df = function(df, train_flag){
                      ,listing_id=unlist(df$listing_id)
                      ,manager_id=as.factor(unlist(df$manager_id))
                      ,price=unlist(df$price)
+                     ,yday=as.factor(sapply(df$created, yday))
+                     ,month=as.factor(sapply(df$created, lubridate::month))
+                     ,mday=as.factor(sapply(df$created, mday))
+                     ,wday=as.factor(sapply(df$created, wday))
+                     ,hour=as.factor(sapply(df$created, lubridate::hour))
                      #,days_since = as.numeric(difftime(Sys.Date(), unlist(df$created)))
                      #,interest_level=as.factor(unlist(df$interest_level))
                      # ,street_adress=as.factor(unlist(df$street_address)) # parse errors
@@ -141,22 +146,11 @@ generate_df = function(df, train_flag){
       t1 = merge(t1, nbd_test, by = "listing_id")
     }
     
-    t1[,":="(yday=yday(created)
-             ,month=lubridate::month(created)
-             ,mday=mday(created)
-             ,wday=wday(created)
-             ,hour=lubridate::hour(created))]
-
     t1$price_per_br = t1$price/t1$bedrooms
     
     t1$bathrooms = as.factor(t1$bathrooms)
     t1$bedrooms = as.factor(t1$bedrooms)
-    t1$wday = as.factor(t1$wday)
-    t1$month = as.factor(t1$month)
-    t1$mday = as.factor(t1$mday)
-    t1$hour = as.factor(t1$hour)
-    t1$yday = as.factor(t1$yday)
-    
+
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
     top_streets = street_type$Var1[street_type$Freq > 200]
@@ -323,10 +317,10 @@ t1 = generate_df(df, 1)
 #   strdetect_df = rbind(strdetect_df, tryCatch(t(as.numeric(str_detect(tolower(df$features[i]), feature))), error = function(e){rep(0, length(feature))}))
 # }
 # 
-# for (i in c(1:length(feature))){ #can this be factored in above?
-#   strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
-# }
 strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
+  for (i in c(1:length(feature))){ #can this be factored in above?
+  strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
+}
 t1 = cbind(t1, strdetect_df)
 
 t2 = generate_df(test, 0)
@@ -335,10 +329,10 @@ t2 = generate_df(test, 0)
 #   strdetect_df_test = rbind(strdetect_df_test, tryCatch(t(as.numeric(str_detect(tolower(test$features[i]), feature))), error = function(e){rep(0, length(feature))}))
 # }
 # 
-# for (i in c(1:length(feature))){ #can this be factored in above?
-#   strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
-# }
 strdetect_df_test = read.csv("strdetect_test.csv", stringsAsFactors = TRUE)
+for (i in c(1:length(feature))){ #can this be factored in above?
+  strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
+}
 t2 = cbind(t2, strdetect_df_test)
 
 #Validation (rf)
