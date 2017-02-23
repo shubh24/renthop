@@ -13,7 +13,6 @@ library(plyr)
 library(xgboost)
 
 #features to implement
-#avg/median price of nbd
 #building popularity?
 #sea-facing/landmark coordinates
 #zero/decimal bathrooms
@@ -345,7 +344,13 @@ building_agg$count = NULL
 t1 = merge(t1, building_agg, by = "building_id")
 t1$building_id = NULL
 
+nbd_agg = aggregate(price ~ neighborhood, data = t1, FUN = mean)
+colnames(nbd_agg) = c("neighborhood", "avg_price_nbd")
 
+t1 = merge(t1, nbd_agg, by = "neighborhood")
+t1$price_diff_from_mean = t1$price - t1$avg_price_nbd
+t1$avg_price_nbd = NULL
+  
 t2 = generate_df(test, 0)
 # strdetect_df_test = data.frame()
 # for (i in 1:nrow(t2)){
@@ -359,12 +364,17 @@ for (i in c(1:44)){ #length(feature) instead of 44
 strdetect_df_test$X = NULL
 t2 = cbind(t2, strdetect_df_test)
 
-t2 = left_join(t2, manager_agg, by = "manager_id")
+t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
 t2$manager_score[is.na(t2$manager_score)] = mean(t2$manager_score, na.rm = TRUE)
 t2$manager_id = NULL
-t2 = left_join(t2, building_agg, by = "building_id")
+t2 = left_join(t2, as.data.table(building_agg), by = "building_id")
 t2$building_score[is.na(t2$building_score)] = mean(t2$building_score, na.rm = TRUE)
 t2$building_id = NULL
+
+t2 = left_join(t2, as.data.table(nbd_agg), by = "neighborhood")
+t2$price_diff_from_mean[!is.na(t2$avg_price_nbd)] = t2$price[!is.na(t2$avg_price_nbd)] - t2$avg_price_nbd[!is.na(t2$avg_price_nbd)]
+t2$price_diff_from_mean[is.na(t2$avg_price_nbd)] = 0
+t2$avg_price_nbd = NULL
 
 for (i in 1:44){
   
