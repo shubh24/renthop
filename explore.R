@@ -21,11 +21,11 @@ h2o.init()
 df = fromJSON("train.json")
 test = fromJSON("test.json")
 
-cv = read.csv("count_vec.csv")
-cv[cv > 1] = 1
-for (i in colnames(cv)){cv[[i]] = as.factor(cv[[i]])}
-cv_train <- cv[1:49352, ]
-cv_test <- cv[49353:124011, ]
+# cv = read.csv("count_vec.csv")
+# cv[cv > 1] = 1
+# for (i in colnames(cv)){cv[[i]] = as.factor(cv[[i]])}
+# cv_train <- cv[1:49352, ]
+# cv_test <- cv[49353:124011, ]
 
 nbd_train = read.csv("neighborhood_train.csv", stringsAsFactors = TRUE)
 nbd_test = read.csv("neighborhood_test.csv", stringsAsFactors = TRUE)
@@ -53,7 +53,6 @@ feature = feature$Var1[feature$Freq > 50]
 #   filter(str_detect(top_features, paste(c('laundry', 'dryer', 'washer'), collapse="|"))) %>%
 #   filter(!str_detect(top_features, "dishwasher")) %>%
 #   kable(caption = "Laundry in unit")
-
 
 rf_h2o = function(t1, t2){
   
@@ -138,11 +137,11 @@ generate_df = function(df, train_flag){
     
     if (train_flag == 1){
       t1$interest_level = as.factor(unlist(df$interest_level))
-      t1 = cbind(t1, cv_train)
+      # t1 = cbind(t1, cv_train)
       t1 = merge(t1, nbd_train, by = "listing_id")
     }
     else{
-      t1 = cbind(t1, cv_test)
+      # t1 = cbind(t1, cv_test)
       t1 = merge(t1, nbd_test, by = "listing_id")
     }
     
@@ -150,7 +149,37 @@ generate_df = function(df, train_flag){
     
     t1$bathrooms = as.factor(t1$bathrooms)
     t1$bedrooms = as.factor(t1$bedrooms)
+    
+    manager_df = t1[, c("manager_id", "interest_level")]  
+    manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
+    manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
+    manager_agg$count = rowSums(manager_agg[,c(2:4)])
+    manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$count
+    manager_agg$manager_score = 2*manager_agg$interest_levelhigh + manager_agg$interest_levelmedium 
+    manager_agg$manager_score[manager_agg$count < 20] = 0
+    manager_agg$interest_levellow = NULL
+    manager_agg$interest_levelhigh = NULL
+    manager_agg$interest_levelmedium = NULL
+    manager_agg$count = NULL
+    
+    t1 = merge(t1, manager_agg, by = "manager_id")
+    t1$manager_id = NULL
 
+    building_df = t1[, c("building_id", "interest_level")]  
+    building_df = cbind(building_df, model.matrix( ~ interest_level - 1, data = building_df))
+    building_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ building_id, data = building_df, FUN = sum)
+    building_agg$count = rowSums(building_agg[,c(2:4)])
+    building_agg[, c(2:4)] = building_agg[, c(2:4)]/building_agg$count
+    building_agg$building_score = 2*building_agg$interest_levelhigh + building_agg$interest_levelmedium 
+    building_agg$building_score[building_agg$count < 20] = 0
+    building_agg$interest_levellow = NULL
+    building_agg$interest_levelhigh = NULL
+    building_agg$interest_levelmedium = NULL
+    building_agg$count = NULL
+    
+    t1 = merge(t1, building_agg, by = "building_id")
+    t1$building_id = NULL
+    
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
     top_streets = street_type$Var1[street_type$Freq > 200]
@@ -189,7 +218,7 @@ validate = function(t1){
   t1_test <- t1[-sample, ]
   
   res_val = rf_h2o(t1_train, t1_test)
-  print(confusionMatrix(table(res_val$predict, t1_test$interest_level)))
+  print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
   print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
  
   return (res_val[, c("high", "low", "medium")]) 
@@ -203,7 +232,7 @@ validate_gbm = function(t1){
   t1_test <- t1[-sample, ]
   
   res_val = gbm_h2o(t1_train, t1_test)
-  print(confusionMatrix(table(res_val$predict, t1_test$interest_level)))
+  print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
   print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
   
   return (res_val[, c("high", "low", "medium")]) 
@@ -318,7 +347,8 @@ t1 = generate_df(df, 1)
 # }
 # 
 strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
-  for (i in c(1:length(feature))){ #can this be factored in above?
+strdetect_df$X = NULL
+for (i in c(1:44)){ #length(feature) instead of 44
   strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
 }
 t1 = cbind(t1, strdetect_df)
