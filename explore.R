@@ -12,6 +12,15 @@ library(MLmetrics)
 library(plyr)
 library(xgboost)
 
+#features to implement
+#avg/median price of nbd
+#building popularity?
+#sea-facing/landmark coordinates
+#zero/decimal bathrooms
+#sentiment analysis on desc
+#adj/nouns usage
+#population density!
+
 ny_lat <- 40.785091
 ny_lon <- -73.968285
 
@@ -150,36 +159,6 @@ generate_df = function(df, train_flag){
     t1$bathrooms = as.factor(t1$bathrooms)
     t1$bedrooms = as.factor(t1$bedrooms)
     
-    manager_df = t1[, c("manager_id", "interest_level")]  
-    manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
-    manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
-    manager_agg$count = rowSums(manager_agg[,c(2:4)])
-    manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$count
-    manager_agg$manager_score = 2*manager_agg$interest_levelhigh + manager_agg$interest_levelmedium 
-    manager_agg$manager_score[manager_agg$count < 20] = 0
-    manager_agg$interest_levellow = NULL
-    manager_agg$interest_levelhigh = NULL
-    manager_agg$interest_levelmedium = NULL
-    manager_agg$count = NULL
-    
-    t1 = merge(t1, manager_agg, by = "manager_id")
-    t1$manager_id = NULL
-
-    building_df = t1[, c("building_id", "interest_level")]  
-    building_df = cbind(building_df, model.matrix( ~ interest_level - 1, data = building_df))
-    building_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ building_id, data = building_df, FUN = sum)
-    building_agg$count = rowSums(building_agg[,c(2:4)])
-    building_agg[, c(2:4)] = building_agg[, c(2:4)]/building_agg$count
-    building_agg$building_score = 2*building_agg$interest_levelhigh + building_agg$interest_levelmedium 
-    building_agg$building_score[building_agg$count < 20] = 0
-    building_agg$interest_levellow = NULL
-    building_agg$interest_levelhigh = NULL
-    building_agg$interest_levelmedium = NULL
-    building_agg$count = NULL
-    
-    t1 = merge(t1, building_agg, by = "building_id")
-    t1$building_id = NULL
-    
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
     top_streets = street_type$Var1[street_type$Freq > 200]
@@ -190,23 +169,6 @@ generate_df = function(df, train_flag){
     # t1$zero_description = as.factor(t1$n_description == 0)
     t1$zero_photos = as.factor(t1$n_photos == 0)
     
-    # buildings = as.data.frame(table(t1$building_id))
-    # buildings = buildings[-(buildings$Var1 == 0),]
-    # 
-    # t1$top10buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
-    # t1$top20buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 20)$Var1, yes = 1, no = 0))
-    # t1$top50buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
-    # t1$top100buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
-    # t1$building_id = NULL
-    # 
-    # managers = as.data.frame(table(t1$manager_id))
-    # 
-    # t1$top10managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
-    # t1$top20managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 20)$Var1, yes = 1, no = 0))
-    # t1$top50managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
-    # t1$top100managers = as.factor(ifelse(as.character(t1$manager_id) %in% head(arrange(managers, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
-    # t1$manager_id = NULL
-
     return (t1)
 }
 
@@ -353,6 +315,37 @@ for (i in c(1:44)){ #length(feature) instead of 44
 }
 t1 = cbind(t1, strdetect_df)
 
+manager_df = t1[, c("manager_id", "interest_level")]  
+manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
+manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
+manager_agg$count = rowSums(manager_agg[,c(2:4)])
+manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$count
+manager_agg$manager_score = 2*manager_agg$interest_levelhigh + manager_agg$interest_levelmedium 
+manager_agg$manager_score[manager_agg$count < 20] = 0
+manager_agg$interest_levellow = NULL
+manager_agg$interest_levelhigh = NULL
+manager_agg$interest_levelmedium = NULL
+manager_agg$count = NULL
+
+t1 = merge(t1, manager_agg, by = "manager_id")
+t1$manager_id = NULL
+
+building_df = t1[, c("building_id", "interest_level")]  
+building_df = cbind(building_df, model.matrix( ~ interest_level - 1, data = building_df))
+building_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ building_id, data = building_df, FUN = sum)
+building_agg$count = rowSums(building_agg[,c(2:4)])
+building_agg[, c(2:4)] = building_agg[, c(2:4)]/building_agg$count
+building_agg$building_score = 2*building_agg$interest_levelhigh + building_agg$interest_levelmedium 
+building_agg$building_score[building_agg$count < 20] = 0
+building_agg$interest_levellow = NULL
+building_agg$interest_levelhigh = NULL
+building_agg$interest_levelmedium = NULL
+building_agg$count = NULL
+
+t1 = merge(t1, building_agg, by = "building_id")
+t1$building_id = NULL
+
+
 t2 = generate_df(test, 0)
 # strdetect_df_test = data.frame()
 # for (i in 1:nrow(t2)){
@@ -360,12 +353,41 @@ t2 = generate_df(test, 0)
 # }
 # 
 strdetect_df_test = read.csv("strdetect_test.csv", stringsAsFactors = TRUE)
-for (i in c(1:length(feature))){ #can this be factored in above?
+for (i in c(1:44)){ #length(feature) instead of 44
   strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
 }
+strdetect_df_test$X = NULL
 t2 = cbind(t2, strdetect_df_test)
 
-#Validation (rf)
+t2 = left_join(t2, manager_agg, by = "manager_id")
+t2$manager_score[is.na(t2$manager_score)] = mean(t2$manager_score, na.rm = TRUE)
+t2$manager_id = NULL
+t2 = left_join(t2, building_agg, by = "building_id")
+t2$building_score[is.na(t2$building_score)] = mean(t2$building_score, na.rm = TRUE)
+t2$building_id = NULL
+
+for (i in 1:44){
+  
+  variable_name = paste0("V", as.character(i))
+  V1_df = cbind(t1[[variable_name]], t1[, c("interest_level")])
+    
+  colnames(V1_df) = c("V1", "interest_level")
+  V1_df$V1 = as.numeric(V1_df$V1)
+  
+  V1_df = cbind(V1_df, model.matrix( ~ interest_level - 1, data = V1_df))
+  V1_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ V1, data = V1_df, FUN = sum)
+  V1_agg$count = rowSums(V1_agg[,c(2:4)])
+  V1_agg[, c(2:4)] = V1_agg[, c(2:4)]/V1_agg$count
+  V1_agg$V1_score = 2*V1_agg$interest_levelhigh + V1_agg$interest_levelmedium 
+  V1_agg$V1_score[V1_agg$count[as.numeric(V1_agg$V1) == 1] < 20] = 0
+  
+  if (max(V1_agg$V1_score) < 0.4){
+    t1[[variable_name]] = NULL
+    t2[[variable_name]] = NULL
+  }
+}
+
+Validation (rf)
 rf_val = validate(t1)
 
 #Running xgboost
@@ -380,7 +402,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_5.csv", row.names = FALSE)
+write.csv(pred, "gbm_7.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
