@@ -13,12 +13,14 @@ library(plyr)
 library(xgboost)
 
 #features to implement
-#building popularity?
+#building popularity? -- didn't work
 #sea-facing/landmark coordinates
+#east west north south
 #zero/decimal bathrooms
 #sentiment analysis on desc
 #adj/nouns usage
 #population density!
+#ensemble -- if both confident, take higher prob. if different, take higher prob. thus, always higher prob.
 
 ny_lat <- 40.785091
 ny_lon <- -73.968285
@@ -96,7 +98,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 10000
+                ,ntrees = 100
                 ,learn_rate = 0.01
                 ,max_depth = 5
                 ,min_rows = 20
@@ -154,6 +156,9 @@ generate_df = function(df, train_flag){
     }
     
     t1$price_per_br = t1$price/t1$bedrooms
+    
+    t1$zero_bedroom = as.factor(t1$bedrooms == 0)
+    t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
     
     t1$bathrooms = as.factor(t1$bathrooms)
     t1$bedrooms = as.factor(t1$bedrooms)
@@ -329,6 +334,11 @@ manager_agg$count = NULL
 t1 = merge(t1, manager_agg, by = "manager_id")
 t1$manager_id = NULL
 
+# nbd_count = aggregate(building_id ~ neighborhood, data = t1, FUN=function(x){length(unique(x))})
+# colnames(nbd_count) = c("neighborhood", "building_count")
+# nbd_count$building_count = as.factor(nbd_count$building_count > 10)
+# t1 = merge(t1, nbd_count, by = "neighborhood")
+
 building_df = t1[, c("building_id", "interest_level")]  
 building_df = cbind(building_df, model.matrix( ~ interest_level - 1, data = building_df))
 building_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ building_id, data = building_df, FUN = sum)
@@ -343,6 +353,8 @@ building_agg$count = NULL
 
 t1 = merge(t1, building_agg, by = "building_id")
 t1$building_id = NULL
+
+t1$medium_score = t1$building_score/t1$price
 
 nbd_agg = aggregate(price ~ neighborhood, data = t1, FUN = mean)
 colnames(nbd_agg) = c("neighborhood", "avg_price_nbd")
@@ -375,6 +387,8 @@ t2 = left_join(t2, as.data.table(nbd_agg), by = "neighborhood")
 t2$price_diff_from_mean[!is.na(t2$avg_price_nbd)] = t2$price[!is.na(t2$avg_price_nbd)] - t2$avg_price_nbd[!is.na(t2$avg_price_nbd)]
 t2$price_diff_from_mean[is.na(t2$avg_price_nbd)] = 0
 t2$avg_price_nbd = NULL
+
+t2$medium_score = t2$building_score/t2$price
 
 for (i in 1:44){
   
