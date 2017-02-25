@@ -13,10 +13,8 @@ library(plyr)
 library(xgboost)
 
 #features to implement
-#building popularity? -- didn't work
 #sea-facing/landmark coordinates
 #east west north south
-#zero/decimal bathrooms
 #sentiment analysis on desc
 #adj/nouns usage
 #population density!
@@ -159,7 +157,8 @@ generate_df = function(df, train_flag){
     
     t1$zero_bedroom = as.factor(t1$bedrooms == 0)
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
-    
+    t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
+      
     t1$bathrooms = as.factor(t1$bathrooms)
     t1$bedrooms = as.factor(t1$bedrooms)
     
@@ -167,6 +166,12 @@ generate_df = function(df, train_flag){
     street_type = as.data.frame(table(as.factor(t1$street_type)))
     top_streets = street_type$Var1[street_type$Freq > 200]
     t1$street_type = as.factor(ifelse(t1$street_type %in% top_streets, yes = as.character(t1$street_type), no = "other"))
+  
+    t1$east = as.factor(str_detect(tolower(t1$display_address), "east"))
+    t1$west = as.factor(str_detect(tolower(t1$display_address), "west"))
+    t1$north = as.factor(str_detect(tolower(t1$display_address), "north"))
+    t1$south = as.factor(str_detect(tolower(t1$display_address), "south"))
+    
     t1$display_address = NULL
     
     t1$zero_building_id = as.factor(t1$building_id == 0)
