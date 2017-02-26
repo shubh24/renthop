@@ -14,7 +14,6 @@ library(xgboost)
 
 #features to implement
 #sea-facing/landmark coordinates
-#east west north south
 #sentiment analysis on desc
 #adj/nouns usage
 #population density!
@@ -140,7 +139,7 @@ generate_df = function(df, train_flag){
                      ,hour=as.factor(sapply(df$created, lubridate::hour))
                      #,days_since = as.numeric(difftime(Sys.Date(), unlist(df$created)))
                      #,interest_level=as.factor(unlist(df$interest_level))
-                     # ,street_adress=as.factor(unlist(df$street_address)) # parse errors
+                     #,street_adress=as.character(unlist(df$street_address)) # parse errors
     )
     
     if (train_flag == 1){
@@ -154,6 +153,21 @@ generate_df = function(df, train_flag){
     }
     
     t1$price_per_br = t1$price/t1$bedrooms
+    
+    # outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
+    # outliers <- paste(outliers$street_adress, ", new york")
+    # 
+    # outliers <- data.frame("street_address" = outliers)
+    # coords <- sapply(as.character(outliers$street_address), function(x) geocode(x, source = "google")) %>%
+    #   t %>%
+    #   data.frame %>%
+    #   cbind(outliers, .)
+    # rownames(coords) <- 1:nrow(coords)
+    # 
+    # t1 = merge(t1, coords, by ="street_address")
+    # 
+    # t1$latitude[t1$longitude == 0 | t1$latitude == 0] = coords$lat
+    # t1$longitude[t1$longitude == 0 | t1$latitude == 0] = coords$lon
     
     t1$zero_bedroom = as.factor(t1$bedrooms == 0)
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
@@ -231,19 +245,34 @@ validate_xgb = function(train_xgb, train_y){
   return(pred_df_val[, c("high", "low", "medium")])
 }
 
-validate_ensemble = function(t1, train_xgb, train_y){
+validate_ensemble = function(t1){
   
   rf_res = validate(t1)
-  xgb_res = validate_xgb(train_xgb, train_y)
+  gbm_res = validate_gbm(t1)
   
+  #Ensemble code here.
+
   set.seed(101) 
   sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
   t1_test <- t1[-sample, ]
   
-  ensemble_res = (rf_res + xgb_res)/2
+  # ensemble_res = data.frame("high" = mapply(function(x, y){max(x, y)}, rf_res$high, gbm_val$high), "medium" = mapply(function(x, y){max(x, y)}, rf_res$medium, gbm_val$medium),  "low" = mapply(function(x, y){max(x, y)}, rf_res$low, gbm_val$low))
+  
+  combined_res = cbind(rf_res, gbm_res)
+  colnames(combined_res) = c("high_rf", "low_rf", "medium_rf", "high_gbm", "low_gbm", "medium_gbm")
+  
+  high_prob_rf = as.numeric(as.factor(str_detect(colnames(combined_res)[apply(combined_res, 1, which.max)], "rf")))
+  high_prob_gbm = as.numeric(as.factor(str_detect(colnames(combined_res)[apply(combined_res, 1, which.max)], "gbm")))
+  
+  ensemble_res = data.frame("high" = (rf_res$high)*(high_prob_rf-1) + (gbm_val$high)*(high_prob_gbm-1), 
+                            "medium" = (rf_res$medium)*(high_prob_rf-1) + (gbm_val$medium)*(high_prob_gbm-1),
+                            "high" = (rf_res$low)*(high_prob_rf-1) + (gbm_val$low)*(high_prob_gbm-1)
+                            )
+      
   MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(ensemble_res))
   
 }
+
 xgb = function(t1, train_flag){
 
   train_x = t1
@@ -416,7 +445,7 @@ for (i in 1:44){
   }
 }
 
-Validation (rf)
+#Validation (rf)
 rf_val = validate(t1)
 
 #Running xgboost
@@ -431,7 +460,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_7.csv", row.names = FALSE)
+write.csv(pred, "gbm_8.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
