@@ -26,7 +26,7 @@ stop.append("york")
 stop.append("steel")
 stop.append("website_redacted")
 
-tfidf = TfidfVectorizer(stop_words=stop,ngram_range=(1,2),lowercase=True,max_df = 0.70, min_df = 0.1, use_idf = True, max_features = 20)
+tfidf = TfidfVectorizer(stop_words=stop,ngram_range=(1,2),lowercase=True,max_df = 0.70, min_df = 0.1, use_idf = True, max_features = 50)
 
 tfs = tfidf.fit_transform(train_text)
 feature_names = tfidf.get_feature_names()
@@ -39,7 +39,7 @@ res = cv.fit_transform(train_text).toarray()
 
 col_names = []
 
-for i in range(0, 20):
+for i in range(0, len(feature_names)):
 	print i, feature_names[i]
 	col_names.append(feature_names[i])
 

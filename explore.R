@@ -17,7 +17,6 @@ library(xgboost)
 #sentiment analysis on desc
 #adj/nouns usage
 #population density!
-#ensemble -- if both confident, take higher prob. if different, take higher prob. thus, always higher prob.
 
 ny_lat <- 40.785091
 ny_lon <- -73.968285
@@ -28,11 +27,12 @@ h2o.init()
 df = fromJSON("train.json")
 test = fromJSON("test.json")
 
-# cv = read.csv("count_vec.csv")
+cv = read.csv("count_vec.csv")
 # cv[cv > 1] = 1
+cv$cv_count = rowSums(cv)
 # for (i in colnames(cv)){cv[[i]] = as.factor(cv[[i]])}
-# cv_train <- cv[1:49352, ]
-# cv_test <- cv[49353:124011, ]
+cv_train <- cv[1:49352, "cv_count"]
+cv_test <- cv[49353:124011, "cv_count"]
 
 nbd_train = read.csv("neighborhood_train.csv", stringsAsFactors = TRUE)
 nbd_test = read.csv("neighborhood_test.csv", stringsAsFactors = TRUE)
@@ -144,11 +144,13 @@ generate_df = function(df, train_flag){
     
     if (train_flag == 1){
       t1$interest_level = as.factor(unlist(df$interest_level))
-      # t1 = cbind(t1, cv_train)
+      t1 = cbind(t1, cv_train)
+      names(t1)[names(t1) == "cv_train"] = "cv_count"
       t1 = merge(t1, nbd_train, by = "listing_id")
     }
     else{
-      # t1 = cbind(t1, cv_test)
+      t1 = cbind(t1, cv_test)
+      names(t1)[names(t1) == "cv_test"] = "cv_count"
       t1 = merge(t1, nbd_test, by = "listing_id")
     }
     
