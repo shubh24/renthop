@@ -71,7 +71,7 @@ rf_h2o = function(t1, t2){
     
     train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
     test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 200)
+    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 1000)
     print(as.data.frame(h2o.varimp(rf))$variable)
     res = as.data.frame(predict(rf, test_h2o))
 
@@ -95,7 +95,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 100
+                ,ntrees = 10000
                 ,learn_rate = 0.01
                 ,max_depth = 5
                 ,min_rows = 20
@@ -249,8 +249,6 @@ validate_ensemble = function(t1){
   
   rf_res = validate(t1)
   gbm_res = validate_gbm(t1)
-  
-  #Ensemble code here.
 
   set.seed(101) 
   sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
@@ -266,10 +264,12 @@ validate_ensemble = function(t1){
   
   ensemble_res = data.frame("high" = (rf_res$high)*(high_prob_rf-1) + (gbm_val$high)*(high_prob_gbm-1), 
                             "medium" = (rf_res$medium)*(high_prob_rf-1) + (gbm_val$medium)*(high_prob_gbm-1),
-                            "high" = (rf_res$low)*(high_prob_rf-1) + (gbm_val$low)*(high_prob_gbm-1)
+                            "low" = (rf_res$low)*(high_prob_rf-1) + (gbm_val$low)*(high_prob_gbm-1)
                             )
-      
-  MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(ensemble_res))
+  
+  ensemble_res$predict = colnames(ensemble_res)[apply(ensemble_res, 1, which.max)]
+  print(MLmetrics::ConfusionMatrix(y_pred = ensemble_res$predict, y_true = t1_test$interest_level))
+  print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(ensemble_res[,c("high", "low", "medium")])))
   
 }
 
