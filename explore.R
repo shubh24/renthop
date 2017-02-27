@@ -37,6 +37,9 @@ test = fromJSON("test.json")
 nbd_train = read.csv("neighborhood_train.csv", stringsAsFactors = TRUE)
 nbd_test = read.csv("neighborhood_test.csv", stringsAsFactors = TRUE)
 
+subway_train = read.csv("subway_train.csv", stringsAsFactors = TRUE)
+subway_test = read.csv("subway_test.csv", stringsAsFactors = TRUE)
+
 feature = as.data.frame(table(tolower(unlist(df$features))))
 feature$Var1 = as.character(feature$Var1)
 
@@ -151,11 +154,13 @@ generate_df = function(df, train_flag){
       #t1 = cbind(t1, cv_train)
       #names(t1)[names(t1) == "cv_train"] = "cv_count"
       t1 = merge(t1, nbd_train, by = "listing_id")
+      t1 = merge(t1, subway_train, by = "listing_id")
     }
     else{
       #t1 = cbind(t1, cv_test)
       #names(t1)[names(t1) == "cv_test"] = "cv_count"
       t1 = merge(t1, nbd_test, by = "listing_id")
+      t1 = merge(t1, subway_test, by = "listing_id")
     }
     
     t1$price_per_br = t1$price/t1$bedrooms

@@ -17,6 +17,12 @@ with open("coded_locs.csv", "r") as f:
     for row in reader:
         coded_locs[row[0]] = (row[1], row[2])
 
+coded_stations = {}
+with open("subways_coords.csv", "r") as f:
+    reader = csv.reader(f)
+    for row in reader:
+        coded_stations[row[0]] = (row[1], row[2])
+
 def go_do(train_var):
     
     lat_lon = []
@@ -73,9 +79,39 @@ def coded_locs_dist(train_var):
         writer.writerow(["listing_id", "neighborhood"])
         writer.writerows(results)
 
+def dist_from_station(train_var):
+
+    results = []
+
+    if train_var == 1:
+        df = train_coords
+        out_file = "subway_train.csv"        
+    else:
+        df = test_coords
+        out_file = "subway_test.csv"
+
+    for i, j in df.iterrows():
+        lat_lon = (j["latitude"], j["longitude"])
+        min_dist = 32768
+
+        for loc in coded_locs:
+            dist = great_circle(lat_lon, coded_locs[loc]).km
+
+            if dist < min_dist:
+                min_dist = dist
+
+        results.append([int(j["listing_id"]), min_dist])
+
+    with open(out_file, "wb") as f:
+        writer = csv.writer(f, delimiter = ",")
+        writer.writerow(["listing_id", "distance"])
+        writer.writerows(results)
+
 
 if __name__ == '__main__':
     # go_do(0)
     # go_do(1)
     # coded_locs_dist(0)
-    coded_locs_dist(1)    
+    # coded_locs_dist(1)    
+    # dist_from_station(1)
+    dist_from_station(0)    
