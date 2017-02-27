@@ -11,12 +11,12 @@ require(dplyr)
 library(MLmetrics)
 library(plyr)
 library(xgboost)
+library(ggmap)
 
 #features to implement
 #sentiment analysis on desc
 #adj/nouns usage
 #population density -- kind of locality
-#trains?
 
 ny_lat <- 40.785091
 ny_lon <- -73.968285
@@ -40,8 +40,8 @@ nbd_test = read.csv("neighborhood_test.csv", stringsAsFactors = TRUE)
 subway_train = read.csv("subway_train.csv", stringsAsFactors = TRUE)
 subway_test = read.csv("subway_test.csv", stringsAsFactors = TRUE)
 
-feature = as.data.frame(table(tolower(unlist(df$features))))
-feature$Var1 = as.character(feature$Var1)
+# feature = as.data.frame(table(tolower(unlist(df$features))))
+# feature$Var1 = as.character(feature$Var1)
 
 # keywords = c("24", "court", "wood", "roof", "outdoor", "garden", "park", "bath", "actual", "allowed", "air", "doorman", "balcony", "available", "pool", "gym", "wifi", "fan", "playroom", "subway", "concierge", "fire", "fitness", "dish", "garage", "granite", "high", "laundry", "live", "fee", "war", "private", "lounge", "short", "spacious", "stainless", "storage", "terrace", "valet", "washer", "yoga")
 feature = c("fee", "furnish", "laundry", "outdoor", "parking", "allowed", "doorman", "elevator", "fitness", "storage")
@@ -146,7 +146,7 @@ generate_df = function(df, train_flag){
                      ,hour=as.factor(sapply(df$created, lubridate::hour))
                      #,days_since = as.numeric(difftime(Sys.Date(), unlist(df$created)))
                      #,interest_level=as.factor(unlist(df$interest_level))
-                     #,street_adress=as.character(unlist(df$street_address)) # parse errors
+                     ,street_address=as.character(unlist(df$street_address)) # parse errors
     )
     
     if (train_flag == 1){
@@ -165,21 +165,24 @@ generate_df = function(df, train_flag){
     
     t1$price_per_br = t1$price/t1$bedrooms
     
-    # outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
-    # outliers <- paste(outliers$street_adress, ", new york")
-    # 
-    # outliers <- data.frame("street_address" = outliers)
-    # coords <- sapply(as.character(outliers$street_address), function(x) geocode(x, source = "google")) %>%
-    #   t %>%
-    #   data.frame %>%
-    #   cbind(outliers, .)
-    # rownames(coords) <- 1:nrow(coords)
-    # 
-    # t1 = merge(t1, coords, by ="street_address")
-    # 
-    # t1$latitude[t1$longitude == 0 | t1$latitude == 0] = coords$lat
-    # t1$longitude[t1$longitude == 0 | t1$latitude == 0] = coords$lon
+    t1$distance = NULL
     
+    outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
+    outliers_ny <- as.data.frame(paste0(outliers$street_address, ", new york"))
+    colnames(outliers_ny) = c("street_address")
+    
+    outliers_ny$latitude = 0
+    outliers_ny$longitude = 0
+    
+    for (i in 1:nrow(outliers_ny)){
+      coord = geocode(as.character(outliers_ny$street_address[i]), source = "google")      
+      outliers_ny$latitude[i] = coord["lat"]
+      outliers_ny$longitude[i] = coord["lon"]
+    }
+
+    outliers_ny$street_address = as.character(outliers$street_adress)
+    t1 = merge(t1, outliers_ny, by ="street_address")
+
     t1$zero_bedroom = as.factor(t1$bedrooms == 0)
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
     t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
