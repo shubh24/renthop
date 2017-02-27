@@ -13,10 +13,12 @@ library(plyr)
 library(xgboost)
 
 #features to implement
-#sea-facing/landmark coordinates
+#no fee
+#diff_price_from_mean mein add bedroom aggregation
 #sentiment analysis on desc
 #adj/nouns usage
-#population density!
+#population density -- kind of locality
+#trains?
 
 ny_lat <- 40.785091
 ny_lon <- -73.968285
@@ -40,20 +42,24 @@ nbd_test = read.csv("neighborhood_test.csv", stringsAsFactors = TRUE)
 feature = as.data.frame(table(tolower(unlist(df$features))))
 feature$Var1 = as.character(feature$Var1)
 
-keywords = c("24", "court", "wood", "roof", "outdoor", "garden", "park", "bath", "actual", "allowed", "air", "doorman", "balcony", "available", "pool", "gym", "wifi", "fan", "playroom", "subway", "concierge", "fire", "fitness", "dish", "garage", "granite", "high", "laundry", "live", "fee", "war", "private", "lounge", "short", "spacious", "stainless", "storage", "terrace", "valet", "washer", "yoga")
+# keywords = c("24", "court", "wood", "roof", "outdoor", "garden", "park", "bath", "actual", "allowed", "air", "doorman", "balcony", "available", "pool", "gym", "wifi", "fan", "playroom", "subway", "concierge", "fire", "fitness", "dish", "garage", "granite", "high", "laundry", "live", "fee", "war", "private", "lounge", "short", "spacious", "stainless", "storage", "terrace", "valet", "washer", "yoga")
+feature = c("furnish", "laundry", "outdoor", "parking", "allowed", "doorman", "elevator", "fitness", "storage")
 
-for (j in 1:length(keywords)){
-  key = keywords[j]
-  wood = feature %>% filter(str_detect(feature$Var1, key))
-  feature = rbind(feature, c(key, sum(wood$Freq)))
-  
-  for(i in 1:nrow(wood)){
-    feature = feature[!(feature$Var1 == wood$Var1[i]),]
-  }
-  feature$Freq = as.numeric(feature$Freq)
-}
+# for (j in 1:length(keywords)){
+#   key = keywords[j]
+#   
+#   filtered = feature %>% filter(str_detect(feature$Var1, key))
+#   # feature = rbind(feature, c(key, sum(filtered$Freq)))
+#   filtered_df = rbind(filtered_df, c(key, sum(filtered$Freq)))
+#   
+# #   for(i in 1:nrow(filtered)){
+# #     feature = feature[!(feature$Var1 == filtered$Var1[i]),]
+# #   }
+#   
+#   filtered_df$Freq = as.numeric(filtered_df$Freq)
+# }
 
-feature = feature$Var1[feature$Freq > 50]
+# feature = feature$Var1[feature$Freq > 50]
 
 # # Laundry in unit INCLUDE THIS!
 # top_features %>%
@@ -95,7 +101,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 100
+                ,ntrees = 10000
                 ,learn_rate = 0.01
                 ,max_depth = 5
                 ,min_rows = 20
@@ -175,8 +181,16 @@ generate_df = function(df, train_flag){
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
     t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
       
-    t1$bathrooms = as.factor(t1$bathrooms)
-    t1$bedrooms = as.factor(t1$bedrooms)
+    t1$one_bathroom = as.factor(t1$bathrooms == 1)
+    t1$two_bathrooms = as.factor(t1$bathrooms == 2)
+    t1$three_bathrooms = as.factor(t1$bathrooms == 3)
+    t1$four_bathrooms = as.factor(t1$bathrooms == 3)
+    t1$five_plus_bathrooms = as.factor(t1$bathrooms > 4)
+    
+    t1$one_bedroom = as.factor(t1$bedrooms == 1)
+    t1$two_bedrooms = as.factor(t1$bedrooms == 2)
+    t1$three_bedrooms = as.factor(t1$bedrooms == 3)
+    t1$four_plus_bedrooms = as.factor(t1$bedrooms > 3)
     
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
@@ -315,7 +329,7 @@ run_xgb = function(train_xgb, train_y, test_xgb){
                   eta = 0.1,
                   gamma = 1,
                   max_depth = 6, 
-                  nround=100, 
+                  nround=10000, 
                   subsample = 1,
                   colsample_bytree = 0.7,
                   seed = 100,
@@ -345,12 +359,12 @@ run_xgb = function(train_xgb, train_y, test_xgb){
 t1 = generate_df(df, 1)
 # strdetect_df = data.frame()
 # for (i in 1:nrow(t1)){
+#   print(i)
 #   strdetect_df = rbind(strdetect_df, tryCatch(t(as.numeric(str_detect(tolower(df$features[i]), feature))), error = function(e){rep(0, length(feature))}))
 # }
-# 
+# write.csv(strdetect_df, "strdetect_train.csv", row.names = FALSE)
 strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
-strdetect_df$X = NULL
-for (i in c(1:44)){ #length(feature) instead of 44
+for (i in c(1:length(feature))){ #length(feature) instead of 44
   strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
 }
 t1 = cbind(t1, strdetect_df)
@@ -390,9 +404,9 @@ building_agg$count = NULL
 t1 = merge(t1, building_agg, by = "building_id")
 t1$building_id = NULL
 
-t1$medium_score = t1$building_score/t1$price
+t1$medium_score = t1$building_score*t1$n_features/t1$price
 
-nbd_agg = aggregate(price ~ neighborhood, data = t1, FUN = mean)
+nbd_agg = aggregate(price ~ neighborhood, data = t1, FUN = median)
 colnames(nbd_agg) = c("neighborhood", "avg_price_nbd")
 
 t1 = merge(t1, nbd_agg, by = "neighborhood")
@@ -402,14 +416,14 @@ t1$avg_price_nbd = NULL
 t2 = generate_df(test, 0)
 # strdetect_df_test = data.frame()
 # for (i in 1:nrow(t2)){
+#   print(i)
 #   strdetect_df_test = rbind(strdetect_df_test, tryCatch(t(as.numeric(str_detect(tolower(test$features[i]), feature))), error = function(e){rep(0, length(feature))}))
 # }
-# 
+#write.csv(strdetect_df_test, "strdetect_test.csv", row.names = FALSE)
 strdetect_df_test = read.csv("strdetect_test.csv", stringsAsFactors = TRUE)
-for (i in c(1:44)){ #length(feature) instead of 44
+for (i in c(1:length(feature))){ 
   strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
 }
-strdetect_df_test$X = NULL
 t2 = cbind(t2, strdetect_df_test)
 
 t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
@@ -424,28 +438,28 @@ t2$price_diff_from_mean[!is.na(t2$avg_price_nbd)] = t2$price[!is.na(t2$avg_price
 t2$price_diff_from_mean[is.na(t2$avg_price_nbd)] = 0
 t2$avg_price_nbd = NULL
 
-t2$medium_score = t2$building_score/t2$price
+t2$medium_score = t2$building_score*t1$n_features/t2$price
 
-for (i in 1:44){
-  
-  variable_name = paste0("V", as.character(i))
-  V1_df = cbind(t1[[variable_name]], t1[, c("interest_level")])
-    
-  colnames(V1_df) = c("V1", "interest_level")
-  V1_df$V1 = as.numeric(V1_df$V1)
-  
-  V1_df = cbind(V1_df, model.matrix( ~ interest_level - 1, data = V1_df))
-  V1_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ V1, data = V1_df, FUN = sum)
-  V1_agg$count = rowSums(V1_agg[,c(2:4)])
-  V1_agg[, c(2:4)] = V1_agg[, c(2:4)]/V1_agg$count
-  V1_agg$V1_score = 2*V1_agg$interest_levelhigh + V1_agg$interest_levelmedium 
-  V1_agg$V1_score[V1_agg$count[as.numeric(V1_agg$V1) == 1] < 20] = 0
-  
-  if (max(V1_agg$V1_score) < 0.4){
-    t1[[variable_name]] = NULL
-    t2[[variable_name]] = NULL
-  }
-}
+# for (i in 1:length(feature)){
+#   
+#   variable_name = paste0("V", as.character(i))
+#   V1_df = cbind(t1[[variable_name]], t1[, c("interest_level")])
+#     
+#   colnames(V1_df) = c("V1", "interest_level")
+#   V1_df$V1 = as.numeric(V1_df$V1)
+#   
+#   V1_df = cbind(V1_df, model.matrix( ~ interest_level - 1, data = V1_df))
+#   V1_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ V1, data = V1_df, FUN = sum)
+#   V1_agg$count = rowSums(V1_agg[,c(2:4)])
+#   V1_agg[, c(2:4)] = V1_agg[, c(2:4)]/V1_agg$count
+#   V1_agg$V1_score = 2*V1_agg$interest_levelhigh + V1_agg$interest_levelmedium 
+#   V1_agg$V1_score[V1_agg$count[as.numeric(V1_agg$V1) == 1] < 20] = 0
+#   
+#   if (max(V1_agg$V1_score) < 0.4){
+#     t1[[variable_name]] = NULL
+#     t2[[variable_name]] = NULL
+#   }
+# }
 
 #Validation (rf)
 rf_val = validate(t1)
@@ -462,7 +476,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_8.csv", row.names = FALSE)
+write.csv(pred, "gbm_9.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
