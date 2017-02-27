@@ -168,21 +168,17 @@ generate_df = function(df, train_flag){
     t1$distance = NULL
     
     outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
-    outliers_ny <- as.data.frame(paste0(outliers$street_address, ", new york"))
-    colnames(outliers_ny) = c("street_address")
-    
-    outliers_ny$latitude = 0
-    outliers_ny$longitude = 0
+    outliers_ny <- as.data.frame(cbind(outliers$listing_id, paste0(outliers$street_address, ", new york")))
+    colnames(outliers_ny) = c("listing_id", "street_address")
     
     for (i in 1:nrow(outliers_ny)){
       coord = geocode(as.character(outliers_ny$street_address[i]), source = "google")      
-      outliers_ny$latitude[i] = coord["lat"]
-      outliers_ny$longitude[i] = coord["lon"]
+
+      t1$latitude[as.character(t1$listing_id) == as.character(outliers_ny$listing_id[i])] = as.numeric(coord["lat"])
+      t1$longitude[as.character(t1$listing_id) == outliers_ny$listing_id[i]] = as.numeric(coord["lon"])
     }
-
-    outliers_ny$street_address = as.character(outliers$street_adress)
-    t1 = merge(t1, outliers_ny, by ="street_address")
-
+    t1$street_address = NULL
+    
     t1$zero_bedroom = as.factor(t1$bedrooms == 0)
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
     t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
