@@ -13,8 +13,6 @@ library(plyr)
 library(xgboost)
 
 #features to implement
-#no fee
-#diff_price_from_mean mein add bedroom aggregation
 #sentiment analysis on desc
 #adj/nouns usage
 #population density -- kind of locality
@@ -43,7 +41,7 @@ feature = as.data.frame(table(tolower(unlist(df$features))))
 feature$Var1 = as.character(feature$Var1)
 
 # keywords = c("24", "court", "wood", "roof", "outdoor", "garden", "park", "bath", "actual", "allowed", "air", "doorman", "balcony", "available", "pool", "gym", "wifi", "fan", "playroom", "subway", "concierge", "fire", "fitness", "dish", "garage", "granite", "high", "laundry", "live", "fee", "war", "private", "lounge", "short", "spacious", "stainless", "storage", "terrace", "valet", "washer", "yoga")
-feature = c("furnish", "laundry", "outdoor", "parking", "allowed", "doorman", "elevator", "fitness", "storage")
+feature = c("fee", "furnish", "laundry", "outdoor", "parking", "allowed", "doorman", "elevator", "fitness", "storage")
 
 # for (j in 1:length(keywords)){
 #   key = keywords[j]
@@ -101,7 +99,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 10000
+                ,ntrees = 100
                 ,learn_rate = 0.01
                 ,max_depth = 5
                 ,min_rows = 20
@@ -406,13 +404,28 @@ t1$building_id = NULL
 
 t1$medium_score = t1$building_score*t1$n_features/t1$price
 
-nbd_agg = aggregate(price ~ neighborhood, data = t1, FUN = median)
-colnames(nbd_agg) = c("neighborhood", "avg_price_nbd")
+nbd_agg = aggregate(price ~ neighborhood + zero_bedroom + one_bedroom + two_bedrooms + three_bedrooms + four_plus_bedrooms, data = t1, FUN = median)
+colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
 
-t1 = merge(t1, nbd_agg, by = "neighborhood")
-t1$price_diff_from_mean = t1$price - t1$avg_price_nbd
-t1$avg_price_nbd = NULL
-  
+t1 = merge(t1, nbd_agg, by = c("neighborhood", "zero_bedroom", "one_bedroom", "two_bedrooms", "three_bedrooms", "four_plus_bedrooms"))
+t1$price_diff_from_median = t1$price - t1$median_price_nbd
+t1$median_price_nbd = NULL
+
+neighborhood_df = t1[, c("neighborhood", "interest_level")]  
+neighborhood_df = cbind(neighborhood_df, model.matrix( ~ interest_level - 1, data = neighborhood_df))
+neighborhood_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ neighborhood, data = neighborhood_df, FUN = sum)
+neighborhood_agg$count = rowSums(neighborhood_agg[,c(2:4)])
+neighborhood_agg[, c(2:4)] = neighborhood_agg[, c(2:4)]/neighborhood_agg$count
+neighborhood_agg$neighborhood_score = 2*neighborhood_agg$interest_levelhigh + neighborhood_agg$interest_levelmedium 
+neighborhood_agg$neighborhood_score[neighborhood_agg$count < 20] = 0
+neighborhood_agg$interest_levellow = NULL
+neighborhood_agg$interest_levelhigh = NULL
+neighborhood_agg$interest_levelmedium = NULL
+neighborhood_agg$count = NULL
+
+t1 = merge(t1, neighborhood_agg, by = "neighborhood")
+t1$neighborhood = NULL
+
 t2 = generate_df(test, 0)
 # strdetect_df_test = data.frame()
 # for (i in 1:nrow(t2)){
@@ -432,6 +445,9 @@ t2$manager_id = NULL
 t2 = left_join(t2, as.data.table(building_agg), by = "building_id")
 t2$building_score[is.na(t2$building_score)] = mean(t2$building_score, na.rm = TRUE)
 t2$building_id = NULL
+t2 = left_join(t2, as.data.table(neighborhood_agg), by = "neighborhood")
+t2$neighborhood_score[is.na(t2$neighborhood_score)] = mean(t2$neighborhood_score, na.rm = TRUE)
+t2$neighborhood = NULL
 
 t2 = left_join(t2, as.data.table(nbd_agg), by = "neighborhood")
 t2$price_diff_from_mean[!is.na(t2$avg_price_nbd)] = t2$price[!is.na(t2$avg_price_nbd)] - t2$avg_price_nbd[!is.na(t2$avg_price_nbd)]
