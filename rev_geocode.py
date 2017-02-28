@@ -111,7 +111,7 @@ def dist_from_station(train_var):
 if __name__ == '__main__':
     # go_do(0)
     # go_do(1)
-    # coded_locs_dist(0)
-    # coded_locs_dist(1)    
+    coded_locs_dist(0)
+    coded_locs_dist(1)    
     # dist_from_station(1)
-    dist_from_station(0)    
+    # dist_from_station(0)

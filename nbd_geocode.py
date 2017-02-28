@@ -190,6 +190,22 @@ s_nbd = [
 "South Shore",
 ]
 
+college_nbd = [
+"Baruch College (CUNY)",
+"Columbia University",
+"Cooper Union ",
+"Fashion Institute of Technology (FIT) ",
+"Hunter College ",
+"John Jay College of Criminal Justice ",
+"Juilliard School ",
+"New York University (NYU) ",
+"NYU Tandon School of Engineering ",
+"Pace University ",
+"Pratt Institute ",
+"The New School ",
+"Weill Cornell Medical College"
+]
+
 if __name__ == '__main__':
 
 	with open("coded_locs.csv", "w") as f:
@@ -228,6 +244,12 @@ if __name__ == '__main__':
 
 		for i in s_nbd:
 			coords = get_coordinates(i + ", staten island")
+			lat, lon = coords
+			print i, lat, lon
+			writer.writerow([i, lat, lon])
+
+		for i in college_nbd:	
+			coords = get_coordinates(i + ", new york")
 			lat, lon = coords
 			print i, lat, lon
 			writer.writerow([i, lat, lon])
