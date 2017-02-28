@@ -2,7 +2,7 @@ library(jsonlite)
 library(data.table)
 library(lubridate)
 library(caTools)
-library(caret)
+#library(caret)
 library(e1071)
 library(magrittr)
 library(knitr)
@@ -10,7 +10,7 @@ library(stringr)
 require(dplyr)
 library(MLmetrics)
 library(plyr)
-library(xgboost)
+#library(xgboost)
 library(ggmap)
 
 #features to implement
@@ -44,7 +44,7 @@ subway_test = read.csv("subway_test.csv", stringsAsFactors = TRUE)
 # feature$Var1 = as.character(feature$Var1)
 
 # keywords = c("24", "court", "wood", "roof", "outdoor", "garden", "park", "bath", "actual", "allowed", "air", "doorman", "balcony", "available", "pool", "gym", "wifi", "fan", "playroom", "subway", "concierge", "fire", "fitness", "dish", "garage", "granite", "high", "laundry", "live", "fee", "war", "private", "lounge", "short", "spacious", "stainless", "storage", "terrace", "valet", "washer", "yoga")
-feature = c("fee", "furnish", "laundry", "outdoor", "parking", "allowed", "doorman", "elevator", "fitness", "storage")
+feature = c("no fee", "furnish", "laundry", "outdoor", "parking", "allowed", "doorman", "elevator", "fitness", "storage")
 
 # for (j in 1:length(keywords)){
 #   key = keywords[j]
@@ -102,7 +102,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 100
+                ,ntrees = 10000
                 ,learn_rate = 0.01
                 ,max_depth = 5
                 ,min_rows = 20
@@ -165,8 +165,6 @@ generate_df = function(df, train_flag){
     
     t1$price_per_br = t1$price/t1$bedrooms
     
-    t1$distance = NULL
-    
     outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
     outliers_ny <- as.data.frame(cbind(outliers$listing_id, paste0(outliers$street_address, ", new york")))
     colnames(outliers_ny) = c("listing_id", "street_address")
@@ -188,11 +186,13 @@ generate_df = function(df, train_flag){
     t1$three_bathrooms = as.factor(t1$bathrooms == 3)
     t1$four_bathrooms = as.factor(t1$bathrooms == 3)
     t1$five_plus_bathrooms = as.factor(t1$bathrooms > 4)
+    t1$bathrooms = NULL
     
     t1$one_bedroom = as.factor(t1$bedrooms == 1)
     t1$two_bedrooms = as.factor(t1$bedrooms == 2)
     t1$three_bedrooms = as.factor(t1$bedrooms == 3)
     t1$four_plus_bedrooms = as.factor(t1$bedrooms > 3)
+    t1$bedrooms = NULL
     
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
@@ -412,7 +412,7 @@ nbd_agg = aggregate(price ~ neighborhood + zero_bedroom + one_bedroom + two_bedr
 colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
 
 t1 = merge(t1, nbd_agg, by = c("neighborhood", "zero_bedroom", "one_bedroom", "two_bedrooms", "three_bedrooms", "four_plus_bedrooms"))
-t1$price_diff_from_median = t1$price - t1$median_price_nbd
+t1$price_diff_from_median = as.factor(t1$price > t1$median_price_nbd)
 t1$median_price_nbd = NULL
 
 neighborhood_df = t1[, c("neighborhood", "interest_level")]  
@@ -436,27 +436,27 @@ t2 = generate_df(test, 0)
 #   print(i)
 #   strdetect_df_test = rbind(strdetect_df_test, tryCatch(t(as.numeric(str_detect(tolower(test$features[i]), feature))), error = function(e){rep(0, length(feature))}))
 # }
-#write.csv(strdetect_df_test, "strdetect_test.csv", row.names = FALSE)
+# write.csv(strdetect_df_test, "strdetect_test.csv", row.names = FALSE)
 strdetect_df_test = read.csv("strdetect_test.csv", stringsAsFactors = TRUE)
 for (i in c(1:length(feature))){ 
   strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
 }
 t2 = cbind(t2, strdetect_df_test)
 
+t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "zero_bedroom", "one_bedroom", "two_bedrooms", "three_bedrooms", "four_plus_bedrooms"))
+t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
+t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
+t2$median_price_nbd = NULL
+
 t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
-t2$manager_score[is.na(t2$manager_score)] = mean(t2$manager_score, na.rm = TRUE)
+t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE)
 t2$manager_id = NULL
 t2 = left_join(t2, as.data.table(building_agg), by = "building_id")
-t2$building_score[is.na(t2$building_score)] = mean(t2$building_score, na.rm = TRUE)
+t2$building_score[is.na(t2$building_score)] = median(t2$building_score, na.rm = TRUE)
 t2$building_id = NULL
 t2 = left_join(t2, as.data.table(neighborhood_agg), by = "neighborhood")
-t2$neighborhood_score[is.na(t2$neighborhood_score)] = mean(t2$neighborhood_score, na.rm = TRUE)
+t2$neighborhood_score[is.na(t2$neighborhood_score)] = median(t2$neighborhood_score, na.rm = TRUE)
 t2$neighborhood = NULL
-
-t2 = left_join(t2, as.data.table(nbd_agg), by = "neighborhood")
-t2$price_diff_from_mean[!is.na(t2$avg_price_nbd)] = t2$price[!is.na(t2$avg_price_nbd)] - t2$avg_price_nbd[!is.na(t2$avg_price_nbd)]
-t2$price_diff_from_mean[is.na(t2$avg_price_nbd)] = 0
-t2$avg_price_nbd = NULL
 
 t2$medium_score = t2$building_score*t1$n_features/t2$price
 
