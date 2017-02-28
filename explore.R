@@ -163,23 +163,21 @@ generate_df = function(df, train_flag){
       t1 = merge(t1, subway_test, by = "listing_id")
     }
     
-    manager_activity = t1[, c("manager_id", "created")]
-    last_active_df = data.frame()
+      manager_activity = t1[, c("listing_id", "manager_id", "created")]
+      last_active_df = data.frame()
+      
+      for (i in 1:length(levels(t1$manager_id))){
+        print(i)
+        
+        specific_manager_activity = data.frame(manager_activity$listing_id[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])], sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])]))
+        colnames(specific_manager_activity) = c("listing_id", "created")
+        
+        specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created)))) 
+        
+        last_active_df = rbind(last_active_df, specific_manager_activity[, c("listing_id", "last_active")])
+      }
     
-    for (i in 1:length(levels(t1$manager_id))){
-      print(i)
-      
-      specific_manager_activity = as.data.frame(sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(manager_activity$manager_id)[i])]))
-      colnames(specific_manager_activity) = "created"
-      
-      specific_manager_activity$manager_id = levels(manager_activity$manager_id)[i]
-      specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created)))) 
-      
-      last_active_df = rbind(last_active_df, specific_manager_activity)
-      
-    }
-
-    t1 = merge(t1, last_active_df, by = c("manager_id", "created"))    
+    t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")    
 
     t1$price_per_br = t1$price/t1$bedrooms
     
