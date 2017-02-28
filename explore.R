@@ -163,6 +163,24 @@ generate_df = function(df, train_flag){
       t1 = merge(t1, subway_test, by = "listing_id")
     }
     
+    manager_activity = t1[, c("manager_id", "created")]
+    last_active_df = data.frame()
+    
+    for (i in 1:length(levels(t1$manager_id))){
+      print(i)
+      
+      specific_manager_activity = as.data.frame(sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(manager_activity$manager_id)[i])]))
+      colnames(specific_manager_activity) = "created"
+      
+      specific_manager_activity$manager_id = levels(manager_activity$manager_id)[i]
+      specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created)))) 
+      
+      last_active_df = rbind(last_active_df, specific_manager_activity)
+      
+    }
+
+    t1 = merge(t1, last_active_df, by = c("manager_id", "created"))    
+
     t1$price_per_br = t1$price/t1$bedrooms
     
     outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
@@ -444,7 +462,8 @@ for (i in c(1:length(feature))){
 t2 = cbind(t2, strdetect_df_test)
 
 t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "zero_bedroom", "one_bedroom", "two_bedrooms", "three_bedrooms", "four_plus_bedrooms"))
-t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
+t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = as.factor(t2$price[!is.na(t2$median_price_nbd)] > t2$median_price_nbd[!is.na(t2$median_price_nbd)])
+
 t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
 t2$median_price_nbd = NULL
 
@@ -496,7 +515,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_9.csv", row.names = FALSE)
+write.csv(pred, "gbm_11.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
