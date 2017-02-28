@@ -85,6 +85,90 @@ rf_h2o = function(t1, t2){
     return(res)
 }
 
+gbm_tuning = function(t1, t2){
+
+  write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
+  write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
+  
+  feature_names = names(t1)
+  feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level")]
+  
+  train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
+  test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
+  
+  ntrees_opts = c(10000)       # early stopping will stop earlier
+  max_depth_opts = seq(1,20)
+  min_rows_opts = c(1,5,10,20,50,100)
+  learn_rate_opts = seq(0.001,0.01,0.001)
+  sample_rate_opts = seq(0.3,1,0.05)
+  col_sample_rate_opts = seq(0.3,1,0.05)
+  col_sample_rate_per_tree_opts = seq(0.3,1,0.05)
+  #nbins_cats_opts = seq(100,10000,100) # no categorical features
+  # in this dataset
+  
+  hyper_params = list( ntrees = ntrees_opts, 
+                       max_depth = max_depth_opts, 
+                       min_rows = min_rows_opts, 
+                       learn_rate = learn_rate_opts,
+                       sample_rate = sample_rate_opts,
+                       col_sample_rate = col_sample_rate_opts,
+                       col_sample_rate_per_tree = col_sample_rate_per_tree_opts
+                       #,nbins_cats = nbins_cats_opts
+  )
+  
+  
+  # Search a random subset of these hyper-parmameters. Max runtime 
+  # and max models are enforced, and the search will stop after we 
+  # don't improve much over the best 5 random models.
+  search_criteria = list(strategy = "RandomDiscrete", 
+                         max_runtime_secs = 1800, 
+                         max_models = 100, 
+                         stopping_metric = "logloss", 
+                         stopping_tolerance = 0.00001, 
+                         stopping_rounds = 5, 
+                         seed = 123456)
+  
+  gbm_grid <- h2o.grid("gbm", 
+                       grid_id = "mygrid",
+                       x = feature_names, 
+                       y = "interest_level", 
+                       
+                       # faster to use a 80/20 split
+                       training_frame = train_h2o,
+                       validation_frame = test_h2o,
+                       nfolds = 0,
+                       
+                       # alternatively, use N-fold cross-validation:
+                       # training_frame = train,
+                       # nfolds = 5,
+                       
+                       # Gaussian is best for MSE loss, but can try 
+                       # other distributions ("laplace", "quantile"):
+                       #distribution="gaussian",
+                       
+                       # stop as soon as mse doesn't improve by 
+                       # more than 0.1% on the validation set, 
+                       # for 2 consecutive scoring events:
+                       stopping_rounds = 2,
+                       stopping_tolerance = 1e-3,
+                       stopping_metric = "logloss",
+                       
+                       # how often to score (affects early stopping):
+                       score_tree_interval = 100, 
+                       
+                       ## seed to control the sampling of the 
+                       ## Cartesian hyper-parameter space:
+                       seed = 123456,
+                       hyper_params = hyper_params,
+                       search_criteria = search_criteria)
+  
+  gbm_sorted_grid <- h2o.getGrid(grid_id = "mygrid", sort_by = "logloss")
+  print(gbm_sorted_grid)
+  
+  best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
+  summary(best_model)
+}
+
 gbm_h2o = function(t1, t2){
   
   write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
@@ -250,11 +334,13 @@ validate_gbm = function(t1){
   t1_train <- t1[sample, ]
   t1_test <- t1[-sample, ]
   
+  gbm_tuning(t1_train, t1_test)
+
   res_val = gbm_h2o(t1_train, t1_test)
   print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
   print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
-  
-  return (res_val[, c("high", "low", "medium")]) 
+
+  return (res_val[, c("high", "low", "medium")])
   
 }
 
@@ -461,8 +547,7 @@ t2 = cbind(t2, strdetect_df_test)
 
 t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "zero_bedroom", "one_bedroom", "two_bedrooms", "three_bedrooms", "four_plus_bedrooms"))
 t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = as.factor(t2$price[!is.na(t2$median_price_nbd)] > t2$median_price_nbd[!is.na(t2$median_price_nbd)])
-
-t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
+#t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
 t2$median_price_nbd = NULL
 
 t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
@@ -513,7 +598,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_11.csv", row.names = FALSE)
+write.csv(pred, "gbm_12.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
