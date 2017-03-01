@@ -87,115 +87,119 @@ rf_h2o = function(t1, t2){
 
 gbm_h2o = function(t1, t2){
 
-  write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
-  write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
-  
-  feature_names = names(t1)
-  feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level")]
-  
-  train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
-  test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-  
-  ntrees_opts = c(2000)       # early stopping will stop earlier
-  max_depth_opts = seq(1,20)
-  min_rows_opts = c(1,5,10,20,50,100)
-  learn_rate_opts = seq(0.001,0.01,0.001)
-  sample_rate_opts = seq(0.3,1,0.05)
-  col_sample_rate_opts = seq(0.3,1,0.05)
-  col_sample_rate_per_tree_opts = seq(0.3,1,0.05)
-  #nbins_cats_opts = seq(100,10000,100) # no categorical features
-  # in this dataset
-  
-  hyper_params = list( ntrees = ntrees_opts, 
-                       max_depth = max_depth_opts, 
-                       min_rows = min_rows_opts, 
-                       learn_rate = learn_rate_opts,
-                       sample_rate = sample_rate_opts,
-                       col_sample_rate = col_sample_rate_opts,
-                       col_sample_rate_per_tree = col_sample_rate_per_tree_opts
-                       #,nbins_cats = nbins_cats_opts
-  )
-  
-  
-  # Search a random subset of these hyper-parmameters. Max runtime 
-  # and max models are enforced, and the search will stop after we 
-  # don't improve much over the best 5 random models.
-  search_criteria = list(strategy = "RandomDiscrete", 
-                         max_runtime_secs =1800, 
-                         max_models = 100, 
-                         stopping_metric = "logloss", 
-                         stopping_tolerance = 0.00001, 
-                         stopping_rounds = 5, 
-                         seed = 123456)
-  
-  gbm_grid <- h2o.grid("gbm", 
-                       grid_id = "mygrid",
-                       x = feature_names, 
-                       y = "interest_level", 
-                       
-                       # faster to use a 80/20 split
-                       # training_frame = train_h2o,
-                       # validation_frame = test_h2o,
-                       # nfolds = 0,
-                       
-                       # alternatively, use N-fold cross-validation:
-                       training_frame = train_h2o,
-                       nfolds = 5,
-                       
-                       # Gaussian is best for MSE loss, but can try 
-                       # other distributions ("laplace", "quantile"):
-                       #distribution="gaussian",
-                       
-                       # stop as soon as mse doesn't improve by 
-                       # more than 0.1% on the validation set, 
-                       # for 2 consecutive scoring events:
-                       stopping_rounds = 2,
-                       stopping_tolerance = 1e-3,
-                       stopping_metric = "logloss",
-                       
-                       # how often to score (affects early stopping):
-                       score_tree_interval = 10, 
-                       
-                       ## seed to control the sampling of the 
-                       ## Cartesian hyper-parameter space:
-                       seed = 123456,
-                       hyper_params = hyper_params,
-                       search_criteria = search_criteria)
-  
-  gbm_sorted_grid <- h2o.getGrid(grid_id = "mygrid", sort_by = "logloss")
-  print(gbm_sorted_grid)
-  
-  best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
-  summary(best_model)
-
   # write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
   # write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
   # 
   # feature_names = names(t1)
-  # feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level")]
+  # feature_names = feature_names[!feature_names %in% c("created")]
+  # feature_names = feature_names[!feature_names %in% c("listing_id")]
+  # feature_names = feature_names[!feature_names %in% c("interest_level")]
   # 
   # train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   # test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
   
-  # gbm1 <- h2o.gbm(x = feature_names
-  #               ,y = "interest_level"
-  #               ,training_frame = train_h2o
-  #               ,distribution = "multinomial"
-  #               ,model_id = "gbm1"
-  #               #,nfolds = 5
-  #               ,ntrees = 10000
-  #               ,learn_rate = 0.01
-  #               ,max_depth = 5
-  #               ,min_rows = 20
-  #               ,sample_rate = 0.8
-  #               ,score_tree_interval = 10
-  #               ,col_sample_rate = 0.7
-  #               ,stopping_rounds = 5
-  #               ,stopping_metric = "logloss"
-  #               ,stopping_tolerance = 1e-4
-  #               ,seed=321)
+  # ntrees_opts = c(2000)       # early stopping will stop earlier
+  # max_depth_opts = seq(1,20)
+  # min_rows_opts = c(1,5,10,20,50,100)
+  # learn_rate_opts = seq(0.001,0.01,0.001)
+  # sample_rate_opts = seq(0.3,1,0.05)
+  # col_sample_rate_opts = seq(0.3,1,0.05)
+  # col_sample_rate_per_tree_opts = seq(0.3,1,0.05)
+  # #nbins_cats_opts = seq(100,10000,100) # no categorical features
+  # # in this dataset
+  # 
+  # hyper_params = list( ntrees = ntrees_opts, 
+  #                      max_depth = max_depth_opts, 
+  #                      min_rows = min_rows_opts, 
+  #                      learn_rate = learn_rate_opts,
+  #                      sample_rate = sample_rate_opts,
+  #                      col_sample_rate = col_sample_rate_opts,
+  #                      col_sample_rate_per_tree = col_sample_rate_per_tree_opts
+  #                      #,nbins_cats = nbins_cats_opts
+  # )
+  # 
+  # 
+  # # Search a random subset of these hyper-parmameters. Max runtime 
+  # # and max models are enforced, and the search will stop after we 
+  # # don't improve much over the best 5 random models.
+  # search_criteria = list(strategy = "RandomDiscrete", 
+  #                        max_runtime_secs = 10, 
+  #                        max_models = 100, 
+  #                        stopping_metric = "logloss", 
+  #                        stopping_tolerance = 0.00001, 
+  #                        stopping_rounds = 5, 
+  #                        seed = 123456)
+  # 
+  # gbm_grid <- h2o.grid("gbm", 
+  #                      grid_id = "mygrid",
+  #                      x = feature_names, 
+  #                      y = "interest_level", 
+  #                      
+  #                      # faster to use a 80/20 split
+  #                      # training_frame = train_h2o,
+  #                      # validation_frame = test_h2o,
+  #                      # nfolds = 0,
+  #                      
+  #                      # alternatively, use N-fold cross-validation:
+  #                      training_frame = train_h2o,
+  #                      nfolds = 5,
+  #                      
+  #                      # Gaussian is best for MSE loss, but can try 
+  #                      # other distributions ("laplace", "quantile"):
+  #                      distribution="multinomial",
+  #                      
+  #                      # stop as soon as mse doesn't improve by 
+  #                      # more than 0.1% on the validation set, 
+  #                      # for 2 consecutive scoring events:
+  #                      stopping_rounds = 2,
+  #                      stopping_tolerance = 1e-3,
+  #                      stopping_metric = "logloss",
+  #                      
+  #                      # how often to score (affects early stopping):
+  #                      score_tree_interval = 10, 
+  #                      
+  #                      ## seed to control the sampling of the 
+  #                      ## Cartesian hyper-parameter space:
+  #                      seed = 123456,
+  #                      hyper_params = hyper_params,
+  #                      search_criteria = search_criteria)
+  # 
+  # gbm_sorted_grid <- h2o.getGrid(grid_id = "mygrid", sort_by = "logloss")
+  # print(gbm_sorted_grid)
+  # 
+  # best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
+  # summary(best_model)
+
+  write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
+  write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
+
+  feature_names = names(t1)
+  feature_names = feature_names[!feature_names %in% c("created")]
+  feature_names = feature_names[!feature_names %in% c("listing_id")]
+  feature_names = feature_names[!feature_names %in% c("interest_level")]
   
-  # print(as.data.frame(h2o.varimp(gbm1))$variable)
+  train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
+  test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
+  
+  gbm1 <- h2o.gbm(x = feature_names
+                ,y = "interest_level"
+                ,training_frame = train_h2o
+                ,distribution = "multinomial"
+                ,model_id = "gbm1"
+                #,nfolds = 5
+                ,ntrees = 10000
+                ,learn_rate = 0.003
+                ,max_depth = 6
+                ,min_rows = 10
+                ,sample_rate = 0.8
+                ,score_tree_interval = 10
+                ,col_sample_rate = 0.75
+                ,stopping_rounds = 5
+                ,stopping_metric = "logloss"
+                ,stopping_tolerance = 1e-4
+                ,seed=321)
+  
+  print(as.data.frame(h2o.varimp(gbm1))$variable)
   res = as.data.frame(predict(best_model, test_h2o))
   
   return(res)
@@ -600,7 +604,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_12.csv", row.names = FALSE)
+write.csv(pred, "gbm_14.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
