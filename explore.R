@@ -12,9 +12,9 @@ library(MLmetrics)
 library(plyr)
 #library(xgboost)
 library(ggmap)
+library(sentiment)
 
 #features to implement
-#sentiment analysis on desc
 #adj/nouns usage
 #population density -- kind of locality
 
@@ -85,7 +85,7 @@ rf_h2o = function(t1, t2){
     return(res)
 }
 
-gbm_tuning = function(t1, t2){
+gbm_h2o = function(t1, t2){
 
   write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
   write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
@@ -96,7 +96,7 @@ gbm_tuning = function(t1, t2){
   train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
   
-  ntrees_opts = c(10000)       # early stopping will stop earlier
+  ntrees_opts = c(2000)       # early stopping will stop earlier
   max_depth_opts = seq(1,20)
   min_rows_opts = c(1,5,10,20,50,100)
   learn_rate_opts = seq(0.001,0.01,0.001)
@@ -121,7 +121,7 @@ gbm_tuning = function(t1, t2){
   # and max models are enforced, and the search will stop after we 
   # don't improve much over the best 5 random models.
   search_criteria = list(strategy = "RandomDiscrete", 
-                         max_runtime_secs = 1800, 
+                         max_runtime_secs =1800, 
                          max_models = 100, 
                          stopping_metric = "logloss", 
                          stopping_tolerance = 0.00001, 
@@ -134,13 +134,13 @@ gbm_tuning = function(t1, t2){
                        y = "interest_level", 
                        
                        # faster to use a 80/20 split
-                       training_frame = train_h2o,
-                       validation_frame = test_h2o,
-                       nfolds = 0,
+                       # training_frame = train_h2o,
+                       # validation_frame = test_h2o,
+                       # nfolds = 0,
                        
                        # alternatively, use N-fold cross-validation:
-                       # training_frame = train,
-                       # nfolds = 5,
+                       training_frame = train_h2o,
+                       nfolds = 5,
                        
                        # Gaussian is best for MSE loss, but can try 
                        # other distributions ("laplace", "quantile"):
@@ -154,7 +154,7 @@ gbm_tuning = function(t1, t2){
                        stopping_metric = "logloss",
                        
                        # how often to score (affects early stopping):
-                       score_tree_interval = 100, 
+                       score_tree_interval = 10, 
                        
                        ## seed to control the sampling of the 
                        ## Cartesian hyper-parameter space:
@@ -167,39 +167,36 @@ gbm_tuning = function(t1, t2){
   
   best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
   summary(best_model)
-}
 
-gbm_h2o = function(t1, t2){
+  # write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
+  # write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
+  # 
+  # feature_names = names(t1)
+  # feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level")]
+  # 
+  # train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
+  # test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
   
-  write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
-  write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
+  # gbm1 <- h2o.gbm(x = feature_names
+  #               ,y = "interest_level"
+  #               ,training_frame = train_h2o
+  #               ,distribution = "multinomial"
+  #               ,model_id = "gbm1"
+  #               #,nfolds = 5
+  #               ,ntrees = 10000
+  #               ,learn_rate = 0.01
+  #               ,max_depth = 5
+  #               ,min_rows = 20
+  #               ,sample_rate = 0.8
+  #               ,score_tree_interval = 10
+  #               ,col_sample_rate = 0.7
+  #               ,stopping_rounds = 5
+  #               ,stopping_metric = "logloss"
+  #               ,stopping_tolerance = 1e-4
+  #               ,seed=321)
   
-  feature_names = names(t1)
-  feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level")]
-  
-  train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
-  test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-  
-  gbm1 <- h2o.gbm(x = feature_names
-                ,y = "interest_level"
-                ,training_frame = train_h2o
-                ,distribution = "multinomial"
-                ,model_id = "gbm1"
-                #,nfolds = 5
-                ,ntrees = 10000
-                ,learn_rate = 0.01
-                ,max_depth = 5
-                ,min_rows = 20
-                ,sample_rate = 0.8
-                ,score_tree_interval = 10
-                ,col_sample_rate = 0.7
-                ,stopping_rounds = 5
-                ,stopping_metric = "logloss"
-                ,stopping_tolerance = 1e-4
-                ,seed=321)
-  
-  print(as.data.frame(h2o.varimp(gbm1))$variable)
-  res = as.data.frame(predict(gbm1, test_h2o))
+  # print(as.data.frame(h2o.varimp(gbm1))$variable)
+  res = as.data.frame(predict(best_model, test_h2o))
   
   return(res)
 }
@@ -213,7 +210,7 @@ generate_df = function(df, train_flag){
                      ,n_words = sapply(strsplit(as.character(df$description), "\\s+"), length)
                      ,n_description = log(as.numeric(sapply(df$description, nchar)))
                      ,n_features = as.numeric(sapply(df$features, length))
-                     # ,description=unlist(df$description) # parse errors
+                     ,description=unlist(df$description) # parse errors
                      ,display_address=as.character(unlist(df$display_address)) # parse errors
                      ,latitude=unlist(df$latitude)
                      ,longitude=unlist(df$longitude)
@@ -251,7 +248,6 @@ generate_df = function(df, train_flag){
       last_active_df = data.frame()
       
       for (i in 1:length(levels(t1$manager_id))){
-        print(i)
         
         specific_manager_activity = data.frame(manager_activity$listing_id[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])], sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])]))
         colnames(specific_manager_activity) = c("listing_id", "created")
@@ -263,7 +259,12 @@ generate_df = function(df, train_flag){
     
     t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")    
 
+    t1$sentiment = sentiment(t1$description)
+    t1$sentiment[is.na(t1$sentiment)] = 0
+    t1$description = NULL
+    
     t1$price_per_br = t1$price/t1$bedrooms
+    t1$price_per_ba = t1$price/t1$bathrooms
     
     outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
     outliers_ny <- as.data.frame(cbind(outliers$listing_id, paste0(outliers$street_address, ", new york")))
@@ -336,11 +337,11 @@ validate_gbm = function(t1){
   
   gbm_tuning(t1_train, t1_test)
 
-  res_val = gbm_h2o(t1_train, t1_test)
-  print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
-  print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
+  # res_val = gbm_h2o(t1_train, t1_test)
+  # print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
+  # print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
 
-  return (res_val[, c("high", "low", "medium")])
+  # return (res_val[, c("high", "low", "medium")])
   
 }
 
@@ -546,8 +547,9 @@ for (i in c(1:length(feature))){
 t2 = cbind(t2, strdetect_df_test)
 
 t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "zero_bedroom", "one_bedroom", "two_bedrooms", "three_bedrooms", "four_plus_bedrooms"))
-t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = as.factor(t2$price[!is.na(t2$median_price_nbd)] > t2$median_price_nbd[!is.na(t2$median_price_nbd)])
-#t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
+t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
+t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
+t2$price_diff_from_median = as.factor(t2$price_diff_from_median > 0)
 t2$median_price_nbd = NULL
 
 t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
@@ -560,7 +562,7 @@ t2 = left_join(t2, as.data.table(neighborhood_agg), by = "neighborhood")
 t2$neighborhood_score[is.na(t2$neighborhood_score)] = median(t2$neighborhood_score, na.rm = TRUE)
 t2$neighborhood = NULL
 
-t2$medium_score = t2$building_score*t1$n_features/t2$price
+t2$medium_score = t2$building_score*t2$n_features/t2$price
 
 # for (i in 1:length(feature)){
 #   
