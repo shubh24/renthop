@@ -186,9 +186,9 @@ gbm_h2o = function(t1, t2){
                 ,training_frame = train_h2o
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
-                #,nfolds = 5
+                # ,nfolds = 5
                 ,ntrees = 10000
-                ,learn_rate = 0.003
+                ,learn_rate = 0.01
                 ,max_depth = 6
                 ,min_rows = 10
                 ,sample_rate = 0.8
@@ -199,7 +199,7 @@ gbm_h2o = function(t1, t2){
                 ,stopping_tolerance = 1e-4
                 ,seed=321)
   
-  print(as.data.frame(h2o.varimp(gbm1))$variable)
+  print(as.data.frame(h2o.varimp(gbm1)))
   res = as.data.frame(predict(best_model, test_h2o))
   
   return(res)
@@ -224,8 +224,8 @@ generate_df = function(df, train_flag){
                      ,listing_id=unlist(df$listing_id)
                      ,manager_id=as.factor(unlist(df$manager_id))
                      ,price=unlist(df$price)
-                     ,yday=as.factor(sapply(df$created, yday))
-                     ,month=as.factor(sapply(df$created, lubridate::month))
+                     #,yday=as.factor(sapply(df$created, yday))
+                     #,month=as.factor(sapply(df$created, lubridate::month))
                      ,mday=as.factor(sapply(df$created, mday))
                      ,wday=as.factor(sapply(df$created, wday))
                      ,hour=as.factor(sapply(df$created, lubridate::hour))
@@ -250,18 +250,18 @@ generate_df = function(df, train_flag){
     
       manager_activity = t1[, c("listing_id", "manager_id", "created")]
       last_active_df = data.frame()
-      
+
       for (i in 1:length(levels(t1$manager_id))){
-        
+
         specific_manager_activity = data.frame(manager_activity$listing_id[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])], sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])]))
         colnames(specific_manager_activity) = c("listing_id", "created")
-        
-        specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created)))) 
-        
+
+        specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created))))
+
         last_active_df = rbind(last_active_df, specific_manager_activity[, c("listing_id", "last_active")])
       }
-    
-    t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")    
+
+    t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")
 
     t1$sentiment = sentiment(t1$description)
     t1$sentiment[is.na(t1$sentiment)] = 0
@@ -282,32 +282,32 @@ generate_df = function(df, train_flag){
     }
     t1$street_address = NULL
     
-    t1$zero_bedroom = as.factor(t1$bedrooms == 0)
-    t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
-    t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
-      
-    t1$one_bathroom = as.factor(t1$bathrooms == 1)
-    t1$two_bathrooms = as.factor(t1$bathrooms == 2)
-    t1$three_bathrooms = as.factor(t1$bathrooms == 3)
-    t1$four_bathrooms = as.factor(t1$bathrooms == 3)
-    t1$five_plus_bathrooms = as.factor(t1$bathrooms > 4)
-    t1$bathrooms = NULL
-    
-    t1$one_bedroom = as.factor(t1$bedrooms == 1)
-    t1$two_bedrooms = as.factor(t1$bedrooms == 2)
-    t1$three_bedrooms = as.factor(t1$bedrooms == 3)
-    t1$four_plus_bedrooms = as.factor(t1$bedrooms > 3)
-    t1$bedrooms = NULL
+    # t1$zero_bedroom = as.factor(t1$bedrooms == 0)
+    # t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
+    # t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
+    #   
+    # t1$one_bathroom = as.factor(t1$bathrooms == 1)
+    # t1$two_bathrooms = as.factor(t1$bathrooms == 2)
+    # t1$three_bathrooms = as.factor(t1$bathrooms == 3)
+    # t1$four_bathrooms = as.factor(t1$bathrooms == 3)
+    # t1$five_plus_bathrooms = as.factor(t1$bathrooms > 4)
+    # t1$bathrooms = NULL
+    # 
+    # t1$one_bedroom = as.factor(t1$bedrooms == 1)
+    # t1$two_bedrooms = as.factor(t1$bedrooms == 2)
+    # t1$three_bedrooms = as.factor(t1$bedrooms == 3)
+    # t1$four_plus_bedrooms = as.factor(t1$bedrooms > 3)
+    # t1$bedrooms = NULL
     
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
     top_streets = street_type$Var1[street_type$Freq > 200]
     t1$street_type = as.factor(ifelse(t1$street_type %in% top_streets, yes = as.character(t1$street_type), no = "other"))
   
-    t1$east = as.factor(str_detect(tolower(t1$display_address), "east"))
-    t1$west = as.factor(str_detect(tolower(t1$display_address), "west"))
-    t1$north = as.factor(str_detect(tolower(t1$display_address), "north"))
-    t1$south = as.factor(str_detect(tolower(t1$display_address), "south"))
+    # t1$east = as.factor(str_detect(tolower(t1$display_address), "east"))
+    # t1$west = as.factor(str_detect(tolower(t1$display_address), "west"))
+    # t1$north = as.factor(str_detect(tolower(t1$display_address), "north"))
+    # t1$south = as.factor(str_detect(tolower(t1$display_address), "south"))
     
     t1$display_address = NULL
     
@@ -339,13 +339,13 @@ validate_gbm = function(t1){
   t1_train <- t1[sample, ]
   t1_test <- t1[-sample, ]
   
-  gbm_tuning(t1_train, t1_test)
+  # gbm_tuning(t1_train, t1_test)
 
-  # res_val = gbm_h2o(t1_train, t1_test)
-  # print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
-  # print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
+  res_val = gbm_h2o(t1_train, t1_test)
+  print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
+  print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
 
-  # return (res_val[, c("high", "low", "medium")])
+  return (res_val[, c("high", "low", "medium")])
   
 }
 
@@ -472,11 +472,11 @@ t1 = generate_df(df, 1)
 #   strdetect_df = rbind(strdetect_df, tryCatch(t(as.numeric(str_detect(tolower(df$features[i]), feature))), error = function(e){rep(0, length(feature))}))
 # }
 # write.csv(strdetect_df, "strdetect_train.csv", row.names = FALSE)
-strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
-for (i in c(1:length(feature))){ #length(feature) instead of 44
-  strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
-}
-t1 = cbind(t1, strdetect_df)
+# strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
+# for (i in c(1:length(feature))){ #length(feature) instead of 44
+#   strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
+# }
+# t1 = cbind(t1, strdetect_df)
 
 manager_df = t1[, c("manager_id", "interest_level")]  
 manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
@@ -484,7 +484,7 @@ manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest
 manager_agg$count = rowSums(manager_agg[,c(2:4)])
 manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$count
 manager_agg$manager_score = 2*manager_agg$interest_levelhigh + manager_agg$interest_levelmedium 
-manager_agg$manager_score[manager_agg$count < 20] = 0
+# manager_agg$manager_score[manager_agg$count < 20] = 0
 manager_agg$interest_levellow = NULL
 manager_agg$interest_levelhigh = NULL
 manager_agg$interest_levelmedium = NULL
@@ -504,7 +504,7 @@ building_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interes
 building_agg$count = rowSums(building_agg[,c(2:4)])
 building_agg[, c(2:4)] = building_agg[, c(2:4)]/building_agg$count
 building_agg$building_score = 2*building_agg$interest_levelhigh + building_agg$interest_levelmedium 
-building_agg$building_score[building_agg$count < 20] = 0
+# building_agg$building_score[building_agg$count < 20] = 0
 building_agg$interest_levellow = NULL
 building_agg$interest_levelhigh = NULL
 building_agg$interest_levelmedium = NULL
@@ -515,10 +515,11 @@ t1$building_id = NULL
 
 t1$medium_score = t1$building_score*t1$n_features/t1$price
 
-nbd_agg = aggregate(price ~ neighborhood + zero_bedroom + one_bedroom + two_bedrooms + three_bedrooms + four_plus_bedrooms, data = t1, FUN = median)
+# nbd_agg = aggregate(price ~ neighborhood + zero_bedroom + one_bedroom + two_bedrooms + three_bedrooms + four_plus_bedrooms, data = t1, FUN = median)
+nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = t1, FUN = median)
 colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
 
-t1 = merge(t1, nbd_agg, by = c("neighborhood", "zero_bedroom", "one_bedroom", "two_bedrooms", "three_bedrooms", "four_plus_bedrooms"))
+t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
 t1$price_diff_from_median = as.factor(t1$price > t1$median_price_nbd)
 t1$median_price_nbd = NULL
 
@@ -528,7 +529,7 @@ neighborhood_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, int
 neighborhood_agg$count = rowSums(neighborhood_agg[,c(2:4)])
 neighborhood_agg[, c(2:4)] = neighborhood_agg[, c(2:4)]/neighborhood_agg$count
 neighborhood_agg$neighborhood_score = 2*neighborhood_agg$interest_levelhigh + neighborhood_agg$interest_levelmedium 
-neighborhood_agg$neighborhood_score[neighborhood_agg$count < 20] = 0
+# neighborhood_agg$neighborhood_score[neighborhood_agg$count < 20] = 0
 neighborhood_agg$interest_levellow = NULL
 neighborhood_agg$interest_levelhigh = NULL
 neighborhood_agg$interest_levelmedium = NULL
@@ -544,13 +545,13 @@ t2 = generate_df(test, 0)
 #   strdetect_df_test = rbind(strdetect_df_test, tryCatch(t(as.numeric(str_detect(tolower(test$features[i]), feature))), error = function(e){rep(0, length(feature))}))
 # }
 # write.csv(strdetect_df_test, "strdetect_test.csv", row.names = FALSE)
-strdetect_df_test = read.csv("strdetect_test.csv", stringsAsFactors = TRUE)
-for (i in c(1:length(feature))){ 
-  strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
-}
-t2 = cbind(t2, strdetect_df_test)
+# strdetect_df_test = read.csv("strdetect_test.csv", stringsAsFactors = TRUE)
+# for (i in c(1:length(feature))){ 
+#   strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
+# }
+# t2 = cbind(t2, strdetect_df_test)
 
-t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "zero_bedroom", "one_bedroom", "two_bedrooms", "three_bedrooms", "four_plus_bedrooms"))
+t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
 t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
 t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
 t2$price_diff_from_median = as.factor(t2$price_diff_from_median > 0)
@@ -604,7 +605,7 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 gbm_val = validate_gbm(t1)
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_14.csv", row.names = FALSE)
+write.csv(pred, "gbm_15.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
