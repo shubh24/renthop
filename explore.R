@@ -191,8 +191,8 @@ gbm_h2o = function(t1, t2){
                 ,training_frame = train_h2o
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
-                ,nfolds = 5
-                ,ntrees = 100
+                #,nfolds = 5
+                ,ntrees = 10000
                 ,learn_rate = 0.01
                 ,max_depth = 6
                 ,min_rows = 10
@@ -272,7 +272,9 @@ generate_df = function(df, train_flag){
     t1$sentiment[is.na(t1$sentiment)] = 0
     t1$description = NULL
     
-    t1$price_per_br = t1$price/t1$bedrooms
+    t1$price_per_br[t1$bedrooms > 0] = t1$price[t1$bedrooms > 0]/t1$bedrooms[t1$bedrooms > 0]
+    t1$price_per_br[t1$bedrooms == 0] = mean(t1$price_per_br[t1$bedrooms == 1])
+    
     t1$price_per_ba = t1$price/t1$bathrooms
     
     outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
@@ -340,6 +342,90 @@ validate = function(t1){
   return (res_val[, c("high", "low", "medium")]) 
 }
 
+get_manager_scores = function(t1, t2){
+  
+  manager_df = t1[, c("manager_id", "interest_level")]  
+  manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
+  manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
+  manager_agg$count = rowSums(manager_agg[,c(2:4)])
+  manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$count
+  manager_agg$manager_score = 2*manager_agg$interest_levelhigh + manager_agg$interest_levelmedium 
+  manager_agg$manager_score[manager_agg$count < 3] = median(manager_agg$manager_score[manager_agg$count >= 3])
+  manager_agg$interest_levellow = NULL
+  manager_agg$interest_levelhigh = NULL
+  manager_agg$interest_levelmedium = NULL
+  manager_agg$count = NULL
+  
+  t1 = merge(t1, manager_agg, by = "manager_id")
+  t1$manager_id = NULL
+  
+  t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
+  t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE)
+  t2$manager_id = NULL
+  
+  return(list(t1, t2))
+  
+}
+
+get_building_scores = function(t1, t2){
+  building_df = t1[, c("building_id", "interest_level")]  
+  building_df = cbind(building_df, model.matrix( ~ interest_level - 1, data = building_df))
+  building_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ building_id, data = building_df, FUN = sum)
+  building_agg$count = rowSums(building_agg[,c(2:4)])
+  building_agg[, c(2:4)] = building_agg[, c(2:4)]/building_agg$count
+  building_agg$building_score = 2*building_agg$interest_levelhigh + building_agg$interest_levelmedium 
+  # building_agg$building_score[building_agg$count < 20] = 0
+  building_agg$interest_levellow = NULL
+  building_agg$interest_levelhigh = NULL
+  building_agg$interest_levelmedium = NULL
+  building_agg$count = NULL
+  
+  t1 = merge(t1, building_agg, by = "building_id")
+  t1$building_id = NULL
+  
+  t2 = left_join(t2, as.data.table(building_agg), by = "building_id")
+  t2$building_score[is.na(t2$building_score)] = median(t2$building_score, na.rm = TRUE)
+  t2$building_id = NULL
+  
+  return(list(t1,t2))
+}
+
+get_nbd_scores = function(t1, t2){
+
+  nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = t1, FUN = median)
+  colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
+  t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
+  t1$price_diff_from_median = as.factor(t1$price > t1$median_price_nbd)
+  t1$median_price_nbd = NULL
+  
+  t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
+  t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
+  t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
+  t2$price_diff_from_median = as.factor(t2$price_diff_from_median > 0)
+  t2$median_price_nbd = NULL
+  
+  neighborhood_df = t1[, c("neighborhood", "interest_level")]  
+  neighborhood_df = cbind(neighborhood_df, model.matrix( ~ interest_level - 1, data = neighborhood_df))
+  neighborhood_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ neighborhood, data = neighborhood_df, FUN = sum)
+  neighborhood_agg$count = rowSums(neighborhood_agg[,c(2:4)])
+  neighborhood_agg[, c(2:4)] = neighborhood_agg[, c(2:4)]/neighborhood_agg$count
+  neighborhood_agg$neighborhood_score = 2*neighborhood_agg$interest_levelhigh + neighborhood_agg$interest_levelmedium 
+  neighborhood_agg$neighborhood_score[neighborhood_agg$count < 3] = median(neighborhood_agg$neighborhood_score[neighborhood_agg$count >= 3])
+  neighborhood_agg$interest_levellow = NULL
+  neighborhood_agg$interest_levelhigh = NULL
+  neighborhood_agg$interest_levelmedium = NULL
+  neighborhood_agg$count = NULL
+  
+  t1 = merge(t1, neighborhood_agg, by = "neighborhood")
+  t1$neighborhood = NULL
+  
+  t2 = left_join(t2, as.data.table(neighborhood_agg), by = "neighborhood")
+  t2$neighborhood_score[is.na(t2$neighborhood_score)] = median(t2$neighborhood_score, na.rm = TRUE)
+  t2$neighborhood = NULL
+  
+  return(list(t1, t2))
+}
+
 validate_gbm = function(t1){
   set.seed(101) 
   
@@ -348,8 +434,9 @@ validate_gbm = function(t1){
   t1_test <- t1[-sample, ]
   
   # gbm_tuning(t1_train, t1_test)
-
+  
   res_val = gbm_h2o(t1_train, t1_test)
+
   print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
   print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
 
@@ -486,65 +573,13 @@ t1 = generate_df(df, 1)
 # }
 # t1 = cbind(t1, strdetect_df)
 
-manager_df = t1[, c("manager_id", "interest_level")]  
-manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
-manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
-manager_agg$count = rowSums(manager_agg[,c(2:4)])
-manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$count
-manager_agg$manager_score = 2*manager_agg$interest_levelhigh + manager_agg$interest_levelmedium 
-manager_agg$manager_score[manager_agg$count < 3] = median(manager_agg$manager_score[manager_agg$count >= 3])
-manager_agg$interest_levellow = NULL
-manager_agg$interest_levelhigh = NULL
-manager_agg$interest_levelmedium = NULL
-manager_agg$count = NULL
-
-t1 = merge(t1, manager_agg, by = "manager_id")
-t1$manager_id = NULL
 
 # nbd_count = aggregate(building_id ~ neighborhood, data = t1, FUN=function(x){length(unique(x))})
 # colnames(nbd_count) = c("neighborhood", "building_count")
 # nbd_count$building_count = as.factor(nbd_count$building_count > 10)
 # t1 = merge(t1, nbd_count, by = "neighborhood")
 
-building_df = t1[, c("building_id", "interest_level")]  
-building_df = cbind(building_df, model.matrix( ~ interest_level - 1, data = building_df))
-building_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ building_id, data = building_df, FUN = sum)
-building_agg$count = rowSums(building_agg[,c(2:4)])
-building_agg[, c(2:4)] = building_agg[, c(2:4)]/building_agg$count
-building_agg$building_score = 2*building_agg$interest_levelhigh + building_agg$interest_levelmedium 
-# building_agg$building_score[building_agg$count < 20] = 0
-building_agg$interest_levellow = NULL
-building_agg$interest_levelhigh = NULL
-building_agg$interest_levelmedium = NULL
-building_agg$count = NULL
 
-t1 = merge(t1, building_agg, by = "building_id")
-t1$building_id = NULL
-
-t1$medium_score = t1$building_score*t1$n_features/t1$price
-
-# nbd_agg = aggregate(price ~ neighborhood + zero_bedroom + one_bedroom + two_bedrooms + three_bedrooms + four_plus_bedrooms, data = t1, FUN = median)
-nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = t1, FUN = median)
-colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
-
-t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
-t1$price_diff_from_median = as.factor(t1$price > t1$median_price_nbd)
-t1$median_price_nbd = NULL
-
-neighborhood_df = t1[, c("neighborhood", "interest_level")]  
-neighborhood_df = cbind(neighborhood_df, model.matrix( ~ interest_level - 1, data = neighborhood_df))
-neighborhood_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ neighborhood, data = neighborhood_df, FUN = sum)
-neighborhood_agg$count = rowSums(neighborhood_agg[,c(2:4)])
-neighborhood_agg[, c(2:4)] = neighborhood_agg[, c(2:4)]/neighborhood_agg$count
-neighborhood_agg$neighborhood_score = 2*neighborhood_agg$interest_levelhigh + neighborhood_agg$interest_levelmedium 
-neighborhood_agg$neighborhood_score[neighborhood_agg$count < 3] = median(neighborhood_agg$neighborhood_score[neighborhood_agg$count >= 3])
-neighborhood_agg$interest_levellow = NULL
-neighborhood_agg$interest_levelhigh = NULL
-neighborhood_agg$interest_levelmedium = NULL
-neighborhood_agg$count = NULL
-
-t1 = merge(t1, neighborhood_agg, by = "neighborhood")
-t1$neighborhood = NULL
 
 t2 = generate_df(test, 0)
 # strdetect_df_test = data.frame()
@@ -559,23 +594,6 @@ t2 = generate_df(test, 0)
 # }
 # t2 = cbind(t2, strdetect_df_test)
 
-t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
-t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
-t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
-t2$price_diff_from_median = as.factor(t2$price_diff_from_median > 0)
-t2$median_price_nbd = NULL
-
-t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
-t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE)
-t2$manager_id = NULL
-t2 = left_join(t2, as.data.table(building_agg), by = "building_id")
-t2$building_score[is.na(t2$building_score)] = median(t2$building_score, na.rm = TRUE)
-t2$building_id = NULL
-t2 = left_join(t2, as.data.table(neighborhood_agg), by = "neighborhood")
-t2$neighborhood_score[is.na(t2$neighborhood_score)] = median(t2$neighborhood_score, na.rm = TRUE)
-t2$neighborhood = NULL
-
-t2$medium_score = t2$building_score*t2$n_features/t2$price
 
 # for (i in 1:length(feature)){
 # 
