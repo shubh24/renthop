@@ -435,6 +435,21 @@ validate_gbm = function(t1){
   
   # gbm_tuning(t1_train, t1_test)
   
+  manager_res = get_manager_scores(t1_train, t1_test)
+  t1_train = manager_res[[1]]
+  t1_test = manager_res[[2]]
+  
+  building_res = get_building_scores(t1_train, t1_test)
+  t1_train = building_res[[1]]
+  t1_test = building_res[[2]]
+  
+  t1_train$medium_score = t1_train$building_score*t1_train$n_features/t1_train$price
+  t1_test$medium_score = t1_test$building_score*t1_test$n_features/t1_test$price
+  
+  nbd_res = get_nbd_scores(t1_train, t1_test)
+  t1_train = nbd_res[[1]]
+  t1_test = nbd_res[[2]]
+  
   res_val = gbm_h2o(t1_train, t1_test)
 
   print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
@@ -579,8 +594,6 @@ t1 = generate_df(df, 1)
 # nbd_count$building_count = as.factor(nbd_count$building_count > 10)
 # t1 = merge(t1, nbd_count, by = "neighborhood")
 
-
-
 t2 = generate_df(test, 0)
 # strdetect_df_test = data.frame()
 # for (i in 1:nrow(t2)){
@@ -629,9 +642,25 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 
 #Validation (gbm)
 gbm_val = validate_gbm(t1)
+
+manager_res = get_manager_scores(t1, t2)
+t1 = manager_res[[1]]
+t2 = manager_res[[2]]
+
+building_res = get_building_scores(t1, t2)
+t1 = building_res[[1]]
+t2 = building_res[[2]]
+
+t1$medium_score = t1$building_score*t1$n_features/t1$price
+t2$medium_score = t2$building_score*t2$n_features/t2$price
+
+nbd_res = get_nbd_scores(t1, t2)
+t1 = nbd_res[[1]]
+t2 = nbd_res[[2]]
+
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_16.csv", row.names = FALSE)
+write.csv(pred, "gbm_17.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
