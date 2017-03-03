@@ -13,7 +13,7 @@ library(plyr)
 #library(xgboost)
 library(ggmap)
 library(sentiment)
-
+library(syuzhet)
 #features to implement
 #adj/nouns usage
 #population density -- kind of locality
@@ -192,7 +192,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 10000
+                ,ntrees = 1000
                 ,learn_rate = 0.01
                 ,max_depth = 6
                 ,min_rows = 10
@@ -205,7 +205,7 @@ gbm_h2o = function(t1, t2){
                 ,seed=321)
   
   print(as.data.frame(h2o.varimp(gbm1)))
-  res = as.data.frame(predict(best_model, test_h2o))
+  res = as.data.frame(predict(gbm1, test_h2o))
   
   return(res)
 }
@@ -253,28 +253,31 @@ generate_df = function(df, train_flag){
       t1 = merge(t1, subway_test, by = "listing_id")
     }
     
-      manager_activity = t1[, c("listing_id", "manager_id", "created")]
-      last_active_df = data.frame()
+    # last_active may not be working because we don't know how the test data is split -- time/randomly etc
+    # manager_activity = t1[, c("listing_id", "manager_id", "created")]
+    #   last_active_df = data.frame()
+    # 
+    #   for (i in 1:length(levels(t1$manager_id))){
+    # 
+    #     specific_manager_activity = data.frame(manager_activity$listing_id[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])], sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])]))
+    #     colnames(specific_manager_activity) = c("listing_id", "created")
+    # 
+    #     specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created))))
+    # 
+    #     last_active_df = rbind(last_active_df, specific_manager_activity[, c("listing_id", "last_active")])
+    #   }
+    # 
+    # t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")
 
-      for (i in 1:length(levels(t1$manager_id))){
-
-        specific_manager_activity = data.frame(manager_activity$listing_id[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])], sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])]))
-        colnames(specific_manager_activity) = c("listing_id", "created")
-
-        specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created))))
-
-        last_active_df = rbind(last_active_df, specific_manager_activity[, c("listing_id", "last_active")])
-      }
-
-    t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")
-
-    t1$sentiment = sentiment(t1$description)
-    t1$sentiment[is.na(t1$sentiment)] = 0
+    sentiment = get_nrc_sentiment(t1$description)
+    t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
+    t1$sentiment[is.na(t1$sentiment)] = mean(t1$sentiment[!is.na(t1$sentiment)])
+    # t1$sentiment = (t1$sentiment - min(t1$sentiment))/(max(t1$sentiment) - min(t1$sentiment))
     t1$description = NULL
     
-    t1$price_per_br[t1$bedrooms > 0] = t1$price[t1$bedrooms > 0]/t1$bedrooms[t1$bedrooms > 0]
-    t1$price_per_br[t1$bedrooms == 0] = mean(t1$price_per_br[t1$bedrooms == 1])
-    
+    # t1$price_per_br[t1$bedrooms > 0] = t1$price[t1$bedrooms > 0]/t1$bedrooms[t1$bedrooms > 0]
+    # t1$price_per_br[t1$bedrooms == 0] = mean(t1$price_per_br[t1$bedrooms == 1])
+    t1$price_per_br = t1$price/t1$bedrooms        
     t1$price_per_ba = t1$price/t1$bathrooms
     
     outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
@@ -311,19 +314,25 @@ generate_df = function(df, train_flag){
     top_streets = street_type$Var1[street_type$Freq > 200]
     t1$street_type = as.factor(ifelse(t1$street_type %in% top_streets, yes = as.character(t1$street_type), no = "other"))
   
-    # t1$east = as.factor(str_detect(tolower(t1$display_address), "east"))
-    # t1$west = as.factor(str_detect(tolower(t1$display_address), "west"))
+    t1$east = as.factor(str_detect(tolower(t1$display_address), "east"))
+    t1$west = as.factor(str_detect(tolower(t1$display_address), "west"))
     # t1$north = as.factor(str_detect(tolower(t1$display_address), "north"))
     # t1$south = as.factor(str_detect(tolower(t1$display_address), "south"))
     
     t1$display_address = NULL
     
     t1$zero_building_id = as.factor(t1$building_id == 0)
+    t1$building_id = NULL
+    
     # t1$zero_description = as.factor(t1$n_description == 0)
     t1$zero_photos = as.factor(t1$n_photos == 0)
     
-    t1$expensive = as.factor(t1$price > 7000)
-    t1$cheap = as.factor(t1$price < 1500)
+    # t1$expensive = as.factor(t1$price > 7000)
+    # t1$cheap = as.factor(t1$price < 1500)
+    
+    t1$price = 1/t1$price
+    t1$price_per_br = 1/t1$price_per_br
+    t1$price_per_ba = 1/t1$price_per_ba
     
     return (t1)
 }
@@ -439,13 +448,14 @@ validate_gbm = function(t1){
   t1_train = manager_res[[1]]
   t1_test = manager_res[[2]]
   
-  building_res = get_building_scores(t1_train, t1_test)
-  t1_train = building_res[[1]]
-  t1_test = building_res[[2]]
+  t1$building_id = NULL
+  # building_res = get_building_scores(t1_train, t1_test)
+  # t1_train = building_res[[1]]
+  # t1_test = building_res[[2]]
   
-  t1_train$medium_score = t1_train$building_score*t1_train$n_features/t1_train$price
-  t1_test$medium_score = t1_test$building_score*t1_test$n_features/t1_test$price
-  
+  # t1_train$medium_score = t1_train$building_score*t1_train$n_features/t1_train$price
+  # t1_test$medium_score = t1_test$building_score*t1_test$n_features/t1_test$price
+
   nbd_res = get_nbd_scores(t1_train, t1_test)
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
