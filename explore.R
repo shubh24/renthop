@@ -12,8 +12,8 @@ library(MLmetrics)
 library(plyr)
 #library(xgboost)
 library(ggmap)
-library(sentiment)
 library(syuzhet)
+
 #features to implement
 #adj/nouns usage
 #population density -- kind of locality
@@ -102,7 +102,7 @@ gbm_h2o = function(t1, t2){
   # 
   # train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   # test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-  
+  # 
   # ntrees_opts = c(2000)       # early stopping will stop earlier
   # max_depth_opts = seq(1,20)
   # min_rows_opts = c(1,5,10,20,50,100)
@@ -113,9 +113,9 @@ gbm_h2o = function(t1, t2){
   # #nbins_cats_opts = seq(100,10000,100) # no categorical features
   # # in this dataset
   # 
-  # hyper_params = list( ntrees = ntrees_opts, 
-  #                      max_depth = max_depth_opts, 
-  #                      min_rows = min_rows_opts, 
+  # hyper_params = list( ntrees = ntrees_opts,
+  #                      max_depth = max_depth_opts,
+  #                      min_rows = min_rows_opts,
   #                      learn_rate = learn_rate_opts,
   #                      sample_rate = sample_rate_opts,
   #                      col_sample_rate = col_sample_rate_opts,
@@ -124,46 +124,46 @@ gbm_h2o = function(t1, t2){
   # )
   # 
   # 
-  # # Search a random subset of these hyper-parmameters. Max runtime 
-  # # and max models are enforced, and the search will stop after we 
+  # # Search a random subset of these hyper-parmameters. Max runtime
+  # # and max models are enforced, and the search will stop after we
   # # don't improve much over the best 5 random models.
-  # search_criteria = list(strategy = "RandomDiscrete", 
-  #                        max_runtime_secs = 10, 
-  #                        max_models = 100, 
-  #                        stopping_metric = "logloss", 
-  #                        stopping_tolerance = 0.00001, 
-  #                        stopping_rounds = 5, 
+  # search_criteria = list(strategy = "RandomDiscrete",
+  #                        max_runtime_secs = 300,
+  #                        max_models = 100,
+  #                        stopping_metric = "logloss",
+  #                        stopping_tolerance = 0.00001,
+  #                        stopping_rounds = 5,
   #                        seed = 123456)
   # 
-  # gbm_grid <- h2o.grid("gbm", 
+  # gbm_grid <- h2o.grid("gbm",
   #                      grid_id = "mygrid",
-  #                      x = feature_names, 
-  #                      y = "interest_level", 
-  #                      
+  #                      x = feature_names,
+  #                      y = "interest_level",
+  # 
   #                      # faster to use a 80/20 split
   #                      # training_frame = train_h2o,
   #                      # validation_frame = test_h2o,
   #                      # nfolds = 0,
-  #                      
+  # 
   #                      # alternatively, use N-fold cross-validation:
   #                      training_frame = train_h2o,
   #                      nfolds = 5,
-  #                      
-  #                      # Gaussian is best for MSE loss, but can try 
+  # 
+  #                      # Gaussian is best for MSE loss, but can try
   #                      # other distributions ("laplace", "quantile"):
   #                      distribution="multinomial",
-  #                      
-  #                      # stop as soon as mse doesn't improve by 
-  #                      # more than 0.1% on the validation set, 
+  # 
+  #                      # stop as soon as mse doesn't improve by
+  #                      # more than 0.1% on the validation set,
   #                      # for 2 consecutive scoring events:
   #                      stopping_rounds = 2,
   #                      stopping_tolerance = 1e-3,
   #                      stopping_metric = "logloss",
-  #                      
+  # 
   #                      # how often to score (affects early stopping):
-  #                      score_tree_interval = 10, 
-  #                      
-  #                      ## seed to control the sampling of the 
+  #                      score_tree_interval = 10,
+  # 
+  #                      ## seed to control the sampling of the
   #                      ## Cartesian hyper-parameter space:
   #                      seed = 123456,
   #                      hyper_params = hyper_params,
@@ -171,9 +171,9 @@ gbm_h2o = function(t1, t2){
   # 
   # gbm_sorted_grid <- h2o.getGrid(grid_id = "mygrid", sort_by = "logloss")
   # print(gbm_sorted_grid)
-  # 
-  # best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
-  # summary(best_model)
+# 
+#   best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
+#   summary(best_model)
 
   write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
   write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
@@ -182,10 +182,10 @@ gbm_h2o = function(t1, t2){
   feature_names = feature_names[!feature_names %in% c("created")]
   feature_names = feature_names[!feature_names %in% c("listing_id")]
   feature_names = feature_names[!feature_names %in% c("interest_level")]
-  
+
   train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-  
+
   gbm1 <- h2o.gbm(x = feature_names
                 ,y = "interest_level"
                 ,training_frame = train_h2o
@@ -203,10 +203,10 @@ gbm_h2o = function(t1, t2){
                 ,stopping_metric = "logloss"
                 ,stopping_tolerance = 1e-4
                 ,seed=321)
-  
+
   print(as.data.frame(h2o.varimp(gbm1)))
   res = as.data.frame(predict(gbm1, test_h2o))
-  
+
   return(res)
 }
 
@@ -272,11 +272,8 @@ generate_df = function(df, train_flag){
     sentiment = get_nrc_sentiment(t1$description)
     t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
     t1$sentiment[is.na(t1$sentiment)] = mean(t1$sentiment[!is.na(t1$sentiment)])
-    # t1$sentiment = (t1$sentiment - min(t1$sentiment))/(max(t1$sentiment) - min(t1$sentiment))
     t1$description = NULL
     
-    # t1$price_per_br[t1$bedrooms > 0] = t1$price[t1$bedrooms > 0]/t1$bedrooms[t1$bedrooms > 0]
-    # t1$price_per_br[t1$bedrooms == 0] = mean(t1$price_per_br[t1$bedrooms == 1])
     t1$price_per_br = t1$price/t1$bedrooms        
     t1$price_per_ba = t1$price/t1$bathrooms
     
@@ -292,9 +289,8 @@ generate_df = function(df, train_flag){
     }
     t1$street_address = NULL
     
-    # t1$zero_bedroom = as.factor(t1$bedrooms == 0)
-    # t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
-    # t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
+    t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
+    t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
     #   
     # t1$one_bathroom = as.factor(t1$bathrooms == 1)
     # t1$two_bathrooms = as.factor(t1$bathrooms == 2)
@@ -322,6 +318,11 @@ generate_df = function(df, train_flag){
     t1$display_address = NULL
     
     t1$zero_building_id = as.factor(t1$building_id == 0)
+    # buildings = as.data.frame(table(t1$building_id))
+    # buildings = buildings[-(buildings$Var1 == 0),]
+    # t1$top10buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
+    # t1$top50buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
+    # t1$top100buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
     t1$building_id = NULL
     
     # t1$zero_description = as.factor(t1$n_description == 0)
@@ -592,12 +593,13 @@ t1 = generate_df(df, 1)
 #   strdetect_df = rbind(strdetect_df, tryCatch(t(as.numeric(str_detect(tolower(df$features[i]), feature))), error = function(e){rep(0, length(feature))}))
 # }
 # write.csv(strdetect_df, "strdetect_train.csv", row.names = FALSE)
-# strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
+strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
 # for (i in c(1:length(feature))){ #length(feature) instead of 44
 #   strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
 # }
 # t1 = cbind(t1, strdetect_df)
-
+# t1$imp_features = rowSums(strdetect_df)
+t1$relevant_features = rowSums(strdetect_df)/t1$n_features
 
 # nbd_count = aggregate(building_id ~ neighborhood, data = t1, FUN=function(x){length(unique(x))})
 # colnames(nbd_count) = c("neighborhood", "building_count")
@@ -657,12 +659,8 @@ manager_res = get_manager_scores(t1, t2)
 t1 = manager_res[[1]]
 t2 = manager_res[[2]]
 
-building_res = get_building_scores(t1, t2)
-t1 = building_res[[1]]
-t2 = building_res[[2]]
-
-t1$medium_score = t1$building_score*t1$n_features/t1$price
-t2$medium_score = t2$building_score*t2$n_features/t2$price
+t1$building_id = NULL
+t2$building_id = NULL
 
 nbd_res = get_nbd_scores(t1, t2)
 t1 = nbd_res[[1]]
@@ -670,7 +668,7 @@ t2 = nbd_res[[2]]
 
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_17.csv", row.names = FALSE)
+write.csv(pred, "gbm_18.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
