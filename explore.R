@@ -45,7 +45,7 @@ subway_test = read.csv("subway_test.csv", stringsAsFactors = TRUE)
 # 
 # filtered_df = data.frame()
 # 
-# keywords = c("24", "court", "wood", "roof", "outdoor", "garden", "parking", "bath", "actual", "allowed", "air", "doorman", "balcony", "available", "pool", "gym", "wifi", "fan", "playroom", "subway", "concierge", "fire", "fitness", "dish", "garage", "granite", "high", "laundry", "live", "no fee", "reduced fee", "war", "private", "lounge", "short", "spacious", "stainless", "storage", "terrace", "valet", "washer", "yoga")
+keywords = c("24", "court", "wood", "roof", "outdoor", "garden", "parking", "bath", "actual", "allowed", "air", "doorman", "balcony", "available", "pool", "gym", "wifi", "fan", "playroom", "subway", "concierge", "fire", "fitness", "dish", "garage", "granite", "high", "laundry", "live", "no fee", "reduced fee", "war", "private", "lounge", "short", "spacious", "stainless", "storage", "terrace", "valet", "washer", "yoga")
 # 
 # for (j in 1:length(keywords)){
 #   key = keywords[j]
@@ -254,20 +254,20 @@ generate_df = function(df, train_flag){
     }
     
     # last_active may not be working because we don't know how the test data is split -- time/randomly etc
-    # manager_activity = t1[, c("listing_id", "manager_id", "created")]
-    #   last_active_df = data.frame()
-    # 
-    #   for (i in 1:length(levels(t1$manager_id))){
-    # 
-    #     specific_manager_activity = data.frame(manager_activity$listing_id[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])], sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])]))
-    #     colnames(specific_manager_activity) = c("listing_id", "created")
-    # 
-    #     specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created))))
-    # 
-    #     last_active_df = rbind(last_active_df, specific_manager_activity[, c("listing_id", "last_active")])
-    #   }
-    # 
-    # t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")
+    manager_activity = t1[, c("listing_id", "manager_id", "created")]
+    last_active_df = data.frame()
+
+    for (i in 1:length(levels(t1$manager_id))){
+
+        specific_manager_activity = data.frame(manager_activity$listing_id[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])], sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])]))
+        colnames(specific_manager_activity) = c("listing_id", "created")
+
+        specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created))))
+
+        last_active_df = rbind(last_active_df, specific_manager_activity[, c("listing_id", "last_active")])
+      }
+
+    t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")
 
     sentiment = get_nrc_sentiment(t1$description)
     t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
@@ -305,6 +305,8 @@ generate_df = function(df, train_flag){
     # t1$four_plus_bedrooms = as.factor(t1$bedrooms > 3)
     # t1$bedrooms = as.factor(t1$bedrooms)
     
+    t1$street_number_provided = as.factor(grepl("\\d", t1$display_address))
+    
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
     top_streets = street_type$Var1[street_type$Freq > 200]
@@ -330,6 +332,10 @@ generate_df = function(df, train_flag){
     
     # t1$expensive = as.factor(t1$price > 7000)
     # t1$cheap = as.factor(t1$price < 1500)
+    
+    # t1$luxury_or_not = grepl("luxury", tolower(df$description))
+    t1$studio = grepl("studio", tolower(df$description))
+    t1$no_fee = grepl("no fee", tolower(df$description))
     
     t1$price = 1/t1$price
     t1$price_per_br = 1/t1$price_per_br
@@ -359,7 +365,7 @@ get_manager_scores = function(t1, t2){
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
   manager_agg$count = rowSums(manager_agg[,c(2:4)])
   manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$count
-  manager_agg$manager_score = 2*manager_agg$interest_levelhigh + manager_agg$interest_levelmedium 
+  manager_agg$manager_score = 2*manager_agg$interest_levelhigh + 1*manager_agg$interest_levelmedium 
   manager_agg$manager_score[manager_agg$count < 3] = median(manager_agg$manager_score[manager_agg$count >= 3])
   manager_agg$interest_levellow = NULL
   manager_agg$interest_levelhigh = NULL
@@ -597,9 +603,9 @@ strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
 # for (i in c(1:length(feature))){ #length(feature) instead of 44
 #   strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
 # }
-# t1 = cbind(t1, strdetect_df)
 # t1$imp_features = rowSums(strdetect_df)
 t1$relevant_features = rowSums(strdetect_df)/t1$n_features
+#Get the 44 features -- count of "high" featuers(ratio of high greater than regular high) against count of "low" features
 
 # nbd_count = aggregate(building_id ~ neighborhood, data = t1, FUN=function(x){length(unique(x))})
 # colnames(nbd_count) = c("neighborhood", "building_count")
@@ -625,20 +631,23 @@ t2 = generate_df(test, 0)
 #   variable_name = paste0("V", as.character(i))
 #   V1_df = cbind(t1[[variable_name]], t1[, c("interest_level")])
 # 
-#   colnames(V1_df) = c("V1", "interest_level")
-#   V1_df$V1 = as.numeric(V1_df$V1)
+  # colnames(V1_df) = c("V1", "interest_level")
+  # V1_df$V1 = as.numeric(V1_df$V1)
+  # 
+  # V1_df = cbind(V1_df, model.matrix( ~ interest_level - 1, data = V1_df))
+  # V1_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ V1, data = V1_df, FUN = sum)
+  # V1_agg$count = rowSums(V1_agg[,c(2:4)])
+  # V1_agg[, c(2:4)] = V1_agg[, c(2:4)]/V1_agg$count
+  # if (max(V1_agg$interest_levelhigh) > 0.1){
+  #   print(feature[i])
+  # }
+#   # V1_agg$V1_score = 2*V1_agg$interest_levelhigh + V1_agg$interest_levelmedium
+#   # V1_agg$V1_score[V1_agg$count[as.numeric(V1_agg$V1) == 1] < 20] = 0
 # 
-#   V1_df = cbind(V1_df, model.matrix( ~ interest_level - 1, data = V1_df))
-#   V1_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ V1, data = V1_df, FUN = sum)
-#   V1_agg$count = rowSums(V1_agg[,c(2:4)])
-#   V1_agg[, c(2:4)] = V1_agg[, c(2:4)]/V1_agg$count
-#   V1_agg$V1_score = 2*V1_agg$interest_levelhigh + V1_agg$interest_levelmedium
-#   V1_agg$V1_score[V1_agg$count[as.numeric(V1_agg$V1) == 1] < 20] = 0
-# 
-#   if (max(V1_agg$V1_score) < 0.4){
-#     t1[[variable_name]] = NULL
-#     t2[[variable_name]] = NULL
-#   }
+#   # if (max(V1_agg$V1_score) < 0.4){
+#   #   t1[[variable_name]] = NULL
+#   #   t2[[variable_name]] = NULL
+#   # }
 # }
 
 #Validation (rf)
@@ -674,3 +683,21 @@ write.csv(pred, "gbm_18.csv", row.names = FALSE)
 res = rf_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(res$high), medium = as.vector(res$medium), low = as.vector(res$low))
 write.csv(pred, "rf_h2o_3.csv", row.names = FALSE)
+
+
+for(i in 1:length(keywords)){
+   variable_name = keywords[i]
+   V1_df = cbind(check[[variable_name]], check[, c("t1$interest_level")])
+   
+   colnames(V1_df) = c("V1", "interest_level")
+   V1_df$V1 = as.numeric(V1_df$V1)
+     
+   V1_df = cbind(V1_df, model.matrix( ~ interest_level - 1, data = V1_df))
+   V1_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ V1, data = V1_df, FUN = sum)
+   V1_agg$count = rowSums(V1_agg[,c(2:4)])
+   V1_agg[, c(2:4)] = V1_agg[, c(2:4)]/V1_agg$count
+   if (max(V1_agg$interest_levelhigh) > 0.1){
+     print(feature[i])
+   }
+       
+}
