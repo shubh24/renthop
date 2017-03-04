@@ -45,7 +45,7 @@ subway_test = read.csv("subway_test.csv", stringsAsFactors = TRUE)
 # 
 # filtered_df = data.frame()
 # 
-keywords = c("24", "court", "wood", "roof", "outdoor", "garden", "parking", "bath", "actual", "allowed", "air", "doorman", "balcony", "available", "pool", "gym", "wifi", "fan", "playroom", "subway", "concierge", "fire", "fitness", "dish", "garage", "granite", "high", "laundry", "live", "no fee", "reduced fee", "war", "private", "lounge", "short", "spacious", "stainless", "storage", "terrace", "valet", "washer", "yoga")
+# keywords = c("24", "court", "wood", "roof", "outdoor", "garden", "parking", "bath", "actual", "allowed", "air", "doorman", "balcony", "available", "pool", "gym", "wifi", "fan", "playroom", "subway", "concierge", "fire", "fitness", "dish", "garage", "granite", "high", "laundry", "live", "no fee", "reduced fee", "war", "private", "lounge", "short", "spacious", "stainless", "storage", "terrace", "valet", "washer", "yoga")
 # 
 # for (j in 1:length(keywords)){
 #   key = keywords[j]
@@ -335,7 +335,18 @@ generate_df = function(df, train_flag){
     
     # t1$luxury_or_not = grepl("luxury", tolower(df$description))
     t1$studio = grepl("studio", tolower(df$description))
-    t1$no_fee = grepl("no fee", tolower(df$description))
+    t1$no_fee = grepl("no fee", tolower(df$features))
+    t1$outdoor = grepl("outdoor", tolower(df$features))
+
+    # t1$V2 = grepl("air", tolower(df$features))
+    # t1$V3 = grepl("pool", tolower(df$features))
+    # t1$V4 = grepl("wifi", tolower(df$features))
+    # t1$V5 = grepl("playroom", tolower(df$features))
+    # t1$V6 = grepl("garage", tolower(df$features))
+    # t1$V7 = grepl("reduced fee", tolower(df$features))
+    # t1$V8 = grepl("private", tolower(df$features))
+    # t1$V9 = grepl("terrace", tolower(df$features))
+    # t1$V10 = grepl("yoga", tolower(df$features))
     
     t1$price = 1/t1$price
     t1$price_per_br = 1/t1$price_per_br
@@ -684,20 +695,24 @@ res = rf_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(res$high), medium = as.vector(res$medium), low = as.vector(res$low))
 write.csv(pred, "rf_h2o_3.csv", row.names = FALSE)
 
+check = as.data.frame(t1$interest_level)
+colnames(check) = c("interest_level")
 
-for(i in 1:length(keywords)){
-   variable_name = keywords[i]
-   V1_df = cbind(check[[variable_name]], check[, c("t1$interest_level")])
-   
-   colnames(V1_df) = c("V1", "interest_level")
-   V1_df$V1 = as.numeric(V1_df$V1)
-     
-   V1_df = cbind(V1_df, model.matrix( ~ interest_level - 1, data = V1_df))
-   V1_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ V1, data = V1_df, FUN = sum)
-   V1_agg$count = rowSums(V1_agg[,c(2:4)])
-   V1_agg[, c(2:4)] = V1_agg[, c(2:4)]/V1_agg$count
-   if (max(V1_agg$interest_levelhigh) > 0.1){
-     print(feature[i])
-   }
-       
-}
+
+##FIND THE HIGH FEATURES -- features whose high percentage is greater than a threshold(0.08)
+# for(i in 1:length(keywords)){
+#   
+#    print(i)
+#    V1_df = as.data.frame(cbind(grepl(keywords[i], tolower(df$description)), check$interest_level))
+#    colnames(V1_df) = c("V1", "interest_level")
+#    V1_df$interest_level = as.factor(V1_df$interest_level)
+# 
+#    V1_df = cbind(V1_df, model.matrix( ~ interest_level - 1, data = V1_df))
+#    V1_agg = aggregate(cbind(interest_level1, interest_level3, interest_level2) ~ V1, data = V1_df, FUN = sum)
+#    V1_agg$count = rowSums(V1_agg[,c(2:4)])
+#    V1_agg[, c(2:4)] = V1_agg[, c(2:4)]/V1_agg$count
+#    if (max(V1_agg$interest_level1) > 0.08){
+#      print(keywords[i])
+#    }
+#        
+# }
