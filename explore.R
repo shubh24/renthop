@@ -103,7 +103,7 @@ gbm_h2o = function(t1, t2){
   # train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   # test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
   # 
-  # ntrees_opts = c(2000)       # early stopping will stop earlier
+  # ntrees_opts = c(2500)       # early stopping will stop earlier
   # max_depth_opts = seq(1,20)
   # min_rows_opts = c(1,5,10,20,50,100)
   # learn_rate_opts = seq(0.001,0.01,0.001)
@@ -128,7 +128,7 @@ gbm_h2o = function(t1, t2){
   # # and max models are enforced, and the search will stop after we
   # # don't improve much over the best 5 random models.
   # search_criteria = list(strategy = "RandomDiscrete",
-  #                        max_runtime_secs = 300,
+  #                        max_runtime_secs = 3600,
   #                        max_models = 100,
   #                        stopping_metric = "logloss",
   #                        stopping_tolerance = 0.00001,
@@ -147,7 +147,7 @@ gbm_h2o = function(t1, t2){
   # 
   #                      # alternatively, use N-fold cross-validation:
   #                      training_frame = train_h2o,
-  #                      nfolds = 5,
+  #                      # nfolds = 5,
   # 
   #                      # Gaussian is best for MSE loss, but can try
   #                      # other distributions ("laplace", "quantile"):
@@ -171,9 +171,9 @@ gbm_h2o = function(t1, t2){
   # 
   # gbm_sorted_grid <- h2o.getGrid(grid_id = "mygrid", sort_by = "logloss")
   # print(gbm_sorted_grid)
-# 
-#   best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
-#   summary(best_model)
+  # 
+  # best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
+  # summary(best_model)
 
   write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
   write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
@@ -192,13 +192,13 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 1000
-                ,learn_rate = 0.01
-                ,max_depth = 6
+                ,ntrees = 2500
+                ,learn_rate = 0.004
+                ,max_depth = 4
                 ,min_rows = 10
-                ,sample_rate = 0.8
+                ,sample_rate = 0.9
                 ,score_tree_interval = 10
-                ,col_sample_rate = 0.75
+                ,col_sample_rate = 0.7
                 ,stopping_rounds = 5
                 ,stopping_metric = "logloss"
                 ,stopping_tolerance = 1e-4
@@ -361,6 +361,22 @@ validate = function(t1){
   sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
   t1_train <- t1[sample, ]
   t1_test <- t1[-sample, ]
+  
+  manager_res = get_manager_scores(t1_train, t1_test)
+  t1_train = manager_res[[1]]
+  t1_test = manager_res[[2]]
+  
+  # t1$building_id = NULL
+  # building_res = get_building_scores(t1_train, t1_test)
+  # t1_train = building_res[[1]]
+  # t1_test = building_res[[2]]
+  
+  # t1_train$medium_score = t1_train$building_score*t1_train$n_features/t1_train$price
+  # t1_test$medium_score = t1_test$building_score*t1_test$n_features/t1_test$price
+  
+  nbd_res = get_nbd_scores(t1_train, t1_test)
+  t1_train = nbd_res[[1]]
+  t1_test = nbd_res[[2]]
   
   res_val = rf_h2o(t1_train, t1_test)
   print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
@@ -616,7 +632,6 @@ strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
 # }
 # t1$imp_features = rowSums(strdetect_df)
 t1$relevant_features = rowSums(strdetect_df)/t1$n_features
-#Get the 44 features -- count of "high" featuers(ratio of high greater than regular high) against count of "low" features
 
 # nbd_count = aggregate(building_id ~ neighborhood, data = t1, FUN=function(x){length(unique(x))})
 # colnames(nbd_count) = c("neighborhood", "building_count")
@@ -635,6 +650,7 @@ t2 = generate_df(test, 0)
 #   strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
 # }
 # t2 = cbind(t2, strdetect_df_test)
+t2$relevant_features = rowSums(strdetect_df_test)/t2$n_features
 
 
 # for (i in 1:length(feature)){
@@ -688,7 +704,7 @@ t2 = nbd_res[[2]]
 
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_18.csv", row.names = FALSE)
+write.csv(pred, "gbm_19.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
