@@ -194,6 +194,7 @@ gbm_h2o = function(t1, t2){
                 #,nfolds = 5
                 ,ntrees = 2500
                 ,learn_rate = 0.004
+                # ,learn_rate = 0.01
                 ,max_depth = 4
                 ,min_rows = 10
                 ,sample_rate = 0.9
@@ -269,13 +270,18 @@ generate_df = function(df, train_flag){
 
     t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")
 
-    sentiment = get_nrc_sentiment(t1$description)
-    t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
-    t1$sentiment[is.na(t1$sentiment)] = mean(t1$sentiment[!is.na(t1$sentiment)])
+    #Install syuzhet and uncomment
+    # sentiment = get_nrc_sentiment(t1$description)
+    # t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
+    # t1$sentiment[is.na(t1$sentiment)] = mean(t1$sentiment[!is.na(t1$sentiment)])
     t1$description = NULL
     
     t1$price_per_br = t1$price/t1$bedrooms        
     t1$price_per_ba = t1$price/t1$bathrooms
+    
+    t1$ends_with_95 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "95")
+    t1$ends_with_99 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "99")
+    t1$ends_with_999 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-2, nchar(as.character(t1$price))) == "999")
     
     outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
     outliers_ny <- as.data.frame(cbind(outliers$listing_id, paste0(outliers$street_address, ", new york")))
@@ -651,7 +657,6 @@ t2 = generate_df(test, 0)
 # }
 # t2 = cbind(t2, strdetect_df_test)
 t2$relevant_features = rowSums(strdetect_df_test)/t2$n_features
-
 
 # for (i in 1:length(feature)){
 # 
