@@ -281,21 +281,6 @@ generate_df = function(df, train_flag){
       t1$relevant_features = rowSums(strdetect_df_test)/t1$n_features
     }
     
-    # last_active may not be working because we don't know how the test data is split -- time/randomly etc
-    manager_activity = t1[, c("listing_id", "manager_id", "created")]
-    last_active_df = data.frame()
-
-    for (i in 1:length(levels(t1$manager_id))){
-
-        specific_manager_activity = data.frame(manager_activity$listing_id[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])], sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])]))
-        colnames(specific_manager_activity) = c("listing_id", "created")
-
-        specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created))))
-
-        last_active_df = rbind(last_active_df, specific_manager_activity[, c("listing_id", "last_active")])
-      }
-
-    t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")
 
     sentiment = get_nrc_sentiment(t1$description)
     t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
@@ -411,6 +396,28 @@ validate = function(t1){
   return (res_val[, c("high", "low", "medium")]) 
 }
 
+get_last_active = function(t1){
+  
+  manager_activity = data.frame("listing_id" = unlist(df$listing_id), "manager_id" = unlist(df$manager_id), "created" = unlist(df$created))
+  manager_activity = rbind(manager_activity, data.frame("listing_id" = unlist(test$listing_id), "manager_id" = unlist(test$manager_id), "created" = unlist(test$created)))
+
+  last_active_df = data.frame()
+  
+  for (i in 1:length(levels(t1$manager_id))){
+    
+    specific_manager_activity = data.frame(manager_activity$listing_id[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])], sort(manager_activity$created[as.character(manager_activity$manager_id) == as.character(levels(t1$manager_id)[i])]))
+    colnames(specific_manager_activity) = c("listing_id", "created")
+    
+    specific_manager_activity$last_active = c(0, as.numeric(diff(as.Date(specific_manager_activity$created))))
+    
+    last_active_df = rbind(last_active_df, specific_manager_activity[, c("listing_id", "last_active")])
+  }
+  
+  t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")
+  
+  return(t1)
+}
+
 get_manager_scores = function(t1, t2){
   
   manager_df = t1[, c("manager_id", "interest_level")]  
@@ -519,6 +526,9 @@ validate_gbm = function(t1){
   nbd_res = get_nbd_scores(t1_train, t1_test)
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
+  
+  t1_train = get_last_active(t1_train)
+  t1_test = get_last_active(t1_test)
   
   res_val = gbm_h2o(t1_train, t1_test)
 
