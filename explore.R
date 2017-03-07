@@ -40,6 +40,32 @@ nbd_test = read.csv("neighborhood_test.csv", stringsAsFactors = TRUE)
 subway_train = read.csv("subway_train.csv", stringsAsFactors = TRUE)
 subway_test = read.csv("subway_test.csv", stringsAsFactors = TRUE)
 
+# strdetect_df = data.frame()
+# for (i in 1:nrow(t1)){
+#   print(i)
+#   strdetect_df = rbind(strdetect_df, tryCatch(t(as.numeric(str_detect(tolower(df$features[i]), feature))), error = function(e){rep(0, length(feature))}))
+# }
+# write.csv(strdetect_df, "strdetect_train.csv", row.names = FALSE)
+strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
+# for (i in c(1:length(feature))){ #length(feature) instead of 44
+#   strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
+# }
+# t1$imp_features = rowSums(strdetect_df)
+
+# strdetect_df_test = data.frame()
+# for (i in 1:nrow(t2)){
+#   print(i)
+#   strdetect_df_test = rbind(strdetect_df_test, tryCatch(t(as.numeric(str_detect(tolower(test$features[i]), feature))), error = function(e){rep(0, length(feature))}))
+# }
+# write.csv(strdetect_df_test, "strdetect_test.csv", row.names = FALSE)
+strdetect_df_test = read.csv("strdetect_test.csv", stringsAsFactors = TRUE)
+# for (i in c(1:length(feature))){ 
+#   strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
+# }
+# t2 = cbind(t2, strdetect_df_test)
+
+
+
 # feature = as.data.frame(table(tolower(unlist(df$features))))
 # feature$Var1 = as.character(feature$Var1)
 # 
@@ -192,10 +218,10 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 2500
-                ,learn_rate = 0.004
-                # ,learn_rate = 0.01
-                ,max_depth = 4
+                ,ntrees = 1000
+                # ,learn_rate = 0.004
+                ,learn_rate = 0.01
+                ,max_depth = 6
                 ,min_rows = 10
                 ,sample_rate = 0.9
                 ,score_tree_interval = 10
@@ -224,7 +250,7 @@ generate_df = function(df, train_flag){
                      ,display_address=as.character(unlist(df$display_address)) # parse errors
                      ,latitude=unlist(df$latitude)
                      ,longitude=unlist(df$longitude)
-                     ,distance_to_city=mapply(function(lon,lat) sqrt((lon - ny_lon)^2 + (lat - ny_lat)^2),
+                     ,distance_to_city=mapply(function(lon,lat) distm (c(lon, lat), c(ny_lon, ny_lat), fun = distHaversine)/1000,
                                               df$longitude,
                                               df$latitude)
                      ,listing_id=unlist(df$listing_id)
@@ -234,8 +260,7 @@ generate_df = function(df, train_flag){
                      #,month=as.factor(sapply(df$created, lubridate::month))
                      ,mday=as.factor(sapply(df$created, mday))
                      ,wday=as.factor(sapply(df$created, wday))
-                     ,hour=as.factor(sapply(df$created, lubridate::hour))
-                     #,days_since = as.numeric(difftime(Sys.Date(), unlist(df$created)))
+                     ,hour=as.numeric(sapply(df$created, lubridate::hour))
                      #,interest_level=as.factor(unlist(df$interest_level))
                      ,street_address=as.character(unlist(df$street_address)) # parse errors
     )
@@ -246,12 +271,14 @@ generate_df = function(df, train_flag){
       #names(t1)[names(t1) == "cv_train"] = "cv_count"
       t1 = merge(t1, nbd_train, by = "listing_id")
       t1 = merge(t1, subway_train, by = "listing_id")
+      t1$relevant_features = rowSums(strdetect_df)/t1$n_features
     }
     else{
       #t1 = cbind(t1, cv_test)
       #names(t1)[names(t1) == "cv_test"] = "cv_count"
       t1 = merge(t1, nbd_test, by = "listing_id")
       t1 = merge(t1, subway_test, by = "listing_id")
+      t1$relevant_features = rowSums(strdetect_df_test)/t1$n_features
     }
     
     # last_active may not be working because we don't know how the test data is split -- time/randomly etc
@@ -270,18 +297,18 @@ generate_df = function(df, train_flag){
 
     t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")
 
-    #Install syuzhet and uncomment
-    # sentiment = get_nrc_sentiment(t1$description)
-    # t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
-    # t1$sentiment[is.na(t1$sentiment)] = mean(t1$sentiment[!is.na(t1$sentiment)])
+    sentiment = get_nrc_sentiment(t1$description)
+    t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
+    t1$sentiment[is.na(t1$sentiment)] = mean(t1$sentiment[!is.na(t1$sentiment)])
     t1$description = NULL
     
-    t1$price_per_br = t1$price/t1$bedrooms        
-    t1$price_per_ba = t1$price/t1$bathrooms
+    t1$price_per_room = t1$price/(t1$bedrooms + t1$bathrooms)        
+    # t1$price_per_ba = t1$price/t1$bathrooms
     
-    t1$ends_with_95 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "95")
-    t1$ends_with_99 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "99")
-    t1$ends_with_999 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-2, nchar(as.character(t1$price))) == "999")
+    # t1$ends_with_95 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "95")
+    # t1$ends_with_99 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "99")
+    # t1$ends_with_999 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-2, nchar(as.character(t1$price))) == "999")
+    t1$number_of_9 = as.numeric(str_count(substr(as.character(t1$price), nchar(as.character(t1$price))-2, nchar(as.character(t1$price))), "9"))
     
     outliers <- t1[t1$longitude == 0 | t1$latitude == 0, ]
     outliers_ny <- as.data.frame(cbind(outliers$listing_id, paste0(outliers$street_address, ", new york")))
@@ -297,20 +324,6 @@ generate_df = function(df, train_flag){
     
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
     t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
-    #   
-    # t1$one_bathroom = as.factor(t1$bathrooms == 1)
-    # t1$two_bathrooms = as.factor(t1$bathrooms == 2)
-    # t1$three_bathrooms = as.factor(t1$bathrooms == 3)
-    # t1$four_bathrooms = as.factor(t1$bathrooms == 3)
-    # t1$five_plus_bathrooms = as.factor(t1$bathrooms > 4)
-    # t1$bathrooms = as.factor(t1$bathrooms)
-    
-    # t1$one_bedroom = as.factor(t1$bedrooms == 1)
-    # t1$two_bedrooms = as.factor(t1$bedrooms == 2)
-    # t1$three_bedrooms = as.factor(t1$bedrooms == 3)
-    # t1$four_plus_bedrooms = as.factor(t1$bedrooms > 3)
-    # t1$bedrooms = as.factor(t1$bedrooms)
-    
     t1$street_number_provided = as.factor(grepl("\\d", t1$display_address))
     
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
@@ -318,8 +331,8 @@ generate_df = function(df, train_flag){
     top_streets = street_type$Var1[street_type$Freq > 200]
     t1$street_type = as.factor(ifelse(t1$street_type %in% top_streets, yes = as.character(t1$street_type), no = "other"))
   
-    t1$east = as.factor(str_detect(tolower(t1$display_address), "east"))
-    t1$west = as.factor(str_detect(tolower(t1$display_address), "west"))
+    # t1$east = as.factor(str_detect(tolower(t1$display_address), "east"))
+    # t1$west = as.factor(str_detect(tolower(t1$display_address), "west"))
     # t1$north = as.factor(str_detect(tolower(t1$display_address), "north"))
     # t1$south = as.factor(str_detect(tolower(t1$display_address), "south"))
     
@@ -344,6 +357,14 @@ generate_df = function(df, train_flag){
     t1$no_fee = grepl("no fee", tolower(df$features))
     t1$outdoor = grepl("outdoor", tolower(df$features))
 
+    # t1$manhattan = grepl("manhattan", tolower(df$description))
+    t1$central_park = grepl("central park", tolower(df$description))
+
+    t1$n_good = t1$n_features + t1$n_photos + t1$n_description 
+    t1$n_features = NULL
+    t1$n_photos = NULL
+    t1$n_description = NULL
+    
     # t1$V2 = grepl("air", tolower(df$features))
     # t1$V3 = grepl("pool", tolower(df$features))
     # t1$V4 = grepl("wifi", tolower(df$features))
@@ -355,9 +376,8 @@ generate_df = function(df, train_flag){
     # t1$V10 = grepl("yoga", tolower(df$features))
     
     t1$price = 1/t1$price
-    t1$price_per_br = 1/t1$price_per_br
-    t1$price_per_ba = 1/t1$price_per_ba
-    
+    t1$price_per_room = 1/t1$price_per_room
+
     return (t1)
 }
 
@@ -626,18 +646,6 @@ run_xgb = function(train_xgb, train_y, test_xgb){
 }
 
 t1 = generate_df(df, 1)
-# strdetect_df = data.frame()
-# for (i in 1:nrow(t1)){
-#   print(i)
-#   strdetect_df = rbind(strdetect_df, tryCatch(t(as.numeric(str_detect(tolower(df$features[i]), feature))), error = function(e){rep(0, length(feature))}))
-# }
-# write.csv(strdetect_df, "strdetect_train.csv", row.names = FALSE)
-strdetect_df = read.csv("strdetect_train.csv", stringsAsFactors = TRUE)
-# for (i in c(1:length(feature))){ #length(feature) instead of 44
-#   strdetect_df[[paste0("V", as.character(i))]] = as.factor(strdetect_df[[paste0("V", as.character(i))]])
-# }
-# t1$imp_features = rowSums(strdetect_df)
-t1$relevant_features = rowSums(strdetect_df)/t1$n_features
 
 # nbd_count = aggregate(building_id ~ neighborhood, data = t1, FUN=function(x){length(unique(x))})
 # colnames(nbd_count) = c("neighborhood", "building_count")
@@ -645,18 +653,6 @@ t1$relevant_features = rowSums(strdetect_df)/t1$n_features
 # t1 = merge(t1, nbd_count, by = "neighborhood")
 
 t2 = generate_df(test, 0)
-# strdetect_df_test = data.frame()
-# for (i in 1:nrow(t2)){
-#   print(i)
-#   strdetect_df_test = rbind(strdetect_df_test, tryCatch(t(as.numeric(str_detect(tolower(test$features[i]), feature))), error = function(e){rep(0, length(feature))}))
-# }
-# write.csv(strdetect_df_test, "strdetect_test.csv", row.names = FALSE)
-# strdetect_df_test = read.csv("strdetect_test.csv", stringsAsFactors = TRUE)
-# for (i in c(1:length(feature))){ 
-#   strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
-# }
-# t2 = cbind(t2, strdetect_df_test)
-t2$relevant_features = rowSums(strdetect_df_test)/t2$n_features
 
 # for (i in 1:length(feature)){
 # 
