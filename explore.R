@@ -219,7 +219,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 #,nfolds = 5
-                ,ntrees = 1000
+                ,ntrees = 2500
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -737,7 +737,7 @@ t2 = manager_res[[2]]
 
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_20.csv", row.names = FALSE)
+write.csv(pred, "gbm_21.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
