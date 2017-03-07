@@ -13,6 +13,7 @@ library(plyr)
 #library(xgboost)
 library(ggmap)
 library(syuzhet)
+library(geosphere)
 
 #features to implement
 #adj/nouns usage
@@ -281,14 +282,12 @@ generate_df = function(df, train_flag){
       t1$relevant_features = rowSums(strdetect_df_test)/t1$n_features
     }
     
-
     sentiment = get_nrc_sentiment(t1$description)
     t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
     t1$sentiment[is.na(t1$sentiment)] = mean(t1$sentiment[!is.na(t1$sentiment)])
     t1$description = NULL
     
     t1$price_per_room = t1$price/(t1$bedrooms + t1$bathrooms)        
-    # t1$price_per_ba = t1$price/t1$bathrooms
     
     # t1$ends_with_95 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "95")
     # t1$ends_with_99 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "99")
@@ -329,7 +328,8 @@ generate_df = function(df, train_flag){
     # t1$top10buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 10)$Var1, yes = 1, no = 0))
     # t1$top50buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 50)$Var1, yes = 1, no = 0))
     # t1$top100buildings = as.factor(ifelse(as.character(t1$building_id) %in% head(arrange(buildings, desc(Freq)), n = 100)$Var1, yes = 1, no = 0))
-    t1$building_id = NULL
+    
+    # t1$building_id = NULL
     
     # t1$zero_description = as.factor(t1$n_description == 0)
     t1$zero_photos = as.factor(t1$n_photos == 0)
@@ -338,12 +338,12 @@ generate_df = function(df, train_flag){
     # t1$cheap = as.factor(t1$price < 1500)
     
     # t1$luxury_or_not = grepl("luxury", tolower(df$description))
-    t1$studio = grepl("studio", tolower(df$description))
+    # t1$studio = grepl("studio", tolower(df$description))
     t1$no_fee = grepl("no fee", tolower(df$features))
-    t1$outdoor = grepl("outdoor", tolower(df$features))
-
-    # t1$manhattan = grepl("manhattan", tolower(df$description))
-    t1$central_park = grepl("central park", tolower(df$description))
+    # t1$outdoor = grepl("outdoor", tolower(df$features))
+    # 
+    # # t1$manhattan = grepl("manhattan", tolower(df$description))
+    # t1$central_park = grepl("central park", tolower(df$description))
 
     t1$n_good = t1$n_features + t1$n_photos + t1$n_description 
     t1$n_features = NULL
@@ -378,9 +378,9 @@ validate = function(t1){
   t1_test = manager_res[[2]]
   
   # t1$building_id = NULL
-  # building_res = get_building_scores(t1_train, t1_test)
-  # t1_train = building_res[[1]]
-  # t1_test = building_res[[2]]
+  building_res = get_building_scores(t1_train, t1_test)
+  t1_train = building_res[[1]]
+  t1_test = building_res[[2]]
   
   # t1_train$medium_score = t1_train$building_score*t1_train$n_features/t1_train$price
   # t1_test$medium_score = t1_test$building_score*t1_test$n_features/t1_test$price
@@ -422,16 +422,23 @@ get_manager_scores = function(t1, t2){
   
   manager_df = t1[, c("manager_id", "interest_level")]  
   manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
+  
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
   manager_agg$count = rowSums(manager_agg[,c(2:4)])
+  
+  manager_agg$popular = as.factor(manager_agg$count > 80)
+  manager_agg$premium = as.factor(manager_agg$interest_levelhigh > 30)
+  
   manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$count
+  
   manager_agg$manager_score = 2*manager_agg$interest_levelhigh + 1*manager_agg$interest_levelmedium 
   manager_agg$manager_score[manager_agg$count < 3] = median(manager_agg$manager_score[manager_agg$count >= 3])
+  
   manager_agg$interest_levellow = NULL
   manager_agg$interest_levelhigh = NULL
   manager_agg$interest_levelmedium = NULL
   manager_agg$count = NULL
-  
+
   t1 = merge(t1, manager_agg, by = "manager_id")
   t1$manager_id = NULL
   
@@ -448,9 +455,20 @@ get_building_scores = function(t1, t2){
   building_df = cbind(building_df, model.matrix( ~ interest_level - 1, data = building_df))
   building_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ building_id, data = building_df, FUN = sum)
   building_agg$count = rowSums(building_agg[,c(2:4)])
-  building_agg[, c(2:4)] = building_agg[, c(2:4)]/building_agg$count
-  building_agg$building_score = 2*building_agg$interest_levelhigh + building_agg$interest_levelmedium 
+  
+  building_agg$building_popular = as.factor(building_agg$count > 60)
+  building_agg$building_popular[building_agg$building_id == 0] = 0
+
+  building_agg$building_premium = as.factor(building_agg$interest_levelhigh > 15)
+  building_agg$building_premium[building_agg$building_id == 0] = 0
+  
+  # building_agg[, c(2:4)] = building_agg[, c(2:4)]/building_agg$count
+  
+  # building_agg$building_score = 2*building_agg$interest_levelhigh + building_agg$interest_levelmedium 
+  
   # building_agg$building_score[building_agg$count < 20] = 0
+  
+  
   building_agg$interest_levellow = NULL
   building_agg$interest_levelhigh = NULL
   building_agg$interest_levelmedium = NULL
@@ -460,7 +478,7 @@ get_building_scores = function(t1, t2){
   t1$building_id = NULL
   
   t2 = left_join(t2, as.data.table(building_agg), by = "building_id")
-  t2$building_score[is.na(t2$building_score)] = median(t2$building_score, na.rm = TRUE)
+  # t2$building_score[is.na(t2$building_score)] = median(t2$building_score, na.rm = TRUE)
   t2$building_id = NULL
   
   return(list(t1,t2))
@@ -505,17 +523,17 @@ get_nbd_scores = function(t1, t2){
 validate_gbm = function(t1){
   set.seed(101) 
   
+  t1$building_id = NULL
+  
   sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
   t1_train <- t1[sample, ]
   t1_test <- t1[-sample, ]
   
   # gbm_tuning(t1_train, t1_test)
   
-  manager_res = get_manager_scores(t1_train, t1_test)
-  t1_train = manager_res[[1]]
-  t1_test = manager_res[[2]]
+  t1_train = get_last_active(t1_train)
+  t1_test = get_last_active(t1_test)
   
-  t1$building_id = NULL
   # building_res = get_building_scores(t1_train, t1_test)
   # t1_train = building_res[[1]]
   # t1_test = building_res[[2]]
@@ -527,8 +545,9 @@ validate_gbm = function(t1){
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
   
-  t1_train = get_last_active(t1_train)
-  t1_test = get_last_active(t1_test)
+  manager_res = get_manager_scores(t1_train, t1_test)
+  t1_train = manager_res[[1]]
+  t1_test = manager_res[[2]]
   
   res_val = gbm_h2o(t1_train, t1_test)
 
@@ -702,9 +721,8 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 #Validation (gbm)
 gbm_val = validate_gbm(t1)
 
-manager_res = get_manager_scores(t1, t2)
-t1 = manager_res[[1]]
-t2 = manager_res[[2]]
+t1_train = get_last_active(t1_train)
+t1_test = get_last_active(t1_test)
 
 t1$building_id = NULL
 t2$building_id = NULL
@@ -713,9 +731,13 @@ nbd_res = get_nbd_scores(t1, t2)
 t1 = nbd_res[[1]]
 t2 = nbd_res[[2]]
 
+manager_res = get_manager_scores(t1, t2)
+t1 = manager_res[[1]]
+t2 = manager_res[[2]]
+
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_19.csv", row.names = FALSE)
+write.csv(pred, "gbm_20.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
