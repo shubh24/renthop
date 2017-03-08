@@ -259,7 +259,7 @@ generate_df = function(df, train_flag){
                      ,price=unlist(df$price)
                      #,yday=as.factor(sapply(df$created, yday))
                      #,month=as.factor(sapply(df$created, lubridate::month))
-                     ,mday=as.factor(sapply(df$created, mday))
+                     ,mday=as.numeric(sapply(df$created, mday))
                      ,wday=as.factor(sapply(df$created, wday))
                      ,hour=as.numeric(sapply(df$created, lubridate::hour))
                      ,minute=as.numeric(sapply(df$created, lubridate::minute))
@@ -274,6 +274,7 @@ generate_df = function(df, train_flag){
       t1 = merge(t1, nbd_train, by = "listing_id")
       t1 = merge(t1, subway_train, by = "listing_id")
       t1$relevant_features = rowSums(strdetect_df)/t1$n_features
+      
     }
     else{
       #t1 = cbind(t1, cv_test)
@@ -288,7 +289,7 @@ generate_df = function(df, train_flag){
     t1$sentiment[is.na(t1$sentiment)] = mean(t1$sentiment[!is.na(t1$sentiment)])
     t1$description = NULL
     
-    t1$price_per_room = t1$price/(t1$bedrooms + t1$bathrooms)        
+    t1$price_per_room = t1$price/(t1$bedrooms + t1$bathrooms)     
     
     # t1$ends_with_95 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "95")
     # t1$ends_with_99 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "99")
@@ -427,8 +428,9 @@ get_manager_scores = function(t1, t2){
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
   manager_agg$count = rowSums(manager_agg[,c(2:4)])
   
-  manager_agg$popular = as.factor(manager_agg$count > 80)
-  manager_agg$premium = as.factor(manager_agg$interest_levelhigh > 30)
+  # manager_agg$popular = as.factor(manager_agg$count > 80)
+  # manager_agg$premium = as.factor(manager_agg$interest_levelhigh > 30)
+  manager_agg$first_timer = as.factor(manager_agg$count == 1)
   
   manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$count
   
@@ -444,7 +446,10 @@ get_manager_scores = function(t1, t2){
   t1$manager_id = NULL
   
   t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
+
+  t2$first_timer = as.factor(is.na(t2$manager_score))
   t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE)
+
   t2$manager_id = NULL
   
   return(list(t1, t2))
@@ -469,7 +474,6 @@ get_building_scores = function(t1, t2){
   
   # building_agg$building_score[building_agg$count < 20] = 0
   
-  
   building_agg$interest_levellow = NULL
   building_agg$interest_levelhigh = NULL
   building_agg$interest_levelmedium = NULL
@@ -493,17 +497,32 @@ get_nbd_scores = function(t1, t2){
   t1$price_diff_from_median = t1$price - t1$median_price_nbd
   t1$price_ratio_with_median = t1$price/t1$median_price_nbd
   
+  # nbd_agg_mean = aggregate(price ~ neighborhood + bedrooms, data = t1, FUN = mean)
+  # colnames(nbd_agg_mean)[colnames(nbd_agg_mean) == "price"] = "mean_price_nbd"
+  # t1 = merge(t1, nbd_agg_mean, by = c("neighborhood", "bedrooms"))
+  # t1$price_diff_from_mean = t1$price - t1$mean_price_nbd
+  # t1$price_ratio_with_mean = t1$price/t1$mean_price_nbd
+
   t1$median_price_nbd = NULL
+  # t1$mean_price_nbd = NULL
   
   t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
   t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
   t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
   # t2$price_diff_from_median = as.factor(t2$price_diff_from_median > 0)
-
+  
   t2$price_ratio_with_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)]/t2$median_price_nbd[!is.na(t2$median_price_nbd)]
   t2$price_ratio_with_median[is.na(t2$median_price_nbd)] = 1
   
+  # t2 = left_join(t2, as.data.table(nbd_agg_mean), by = c("neighborhood", "bedrooms"))
+  # t2$price_diff_from_mean[!is.na(t2$mean_price_nbd)] = t2$price[!is.na(t2$mean_price_nbd)] - t2$mean_price_nbd[!is.na(t2$mean_price_nbd)]
+  # t2$price_diff_from_mean[is.na(t2$mean_price_nbd)] = 0
+  # 
+  # t2$price_ratio_with_mean[!is.na(t2$mean_price_nbd)] = t2$price[!is.na(t2$mean_price_nbd)]/t2$mean_price_nbd[!is.na(t2$mean_price_nbd)]
+  # t2$price_ratio_with_mean[is.na(t2$mean_price_nbd)] = 1
+  
   t2$median_price_nbd = NULL
+  # t2$mean_price_nbd = NULL
   
   neighborhood_df = t1[, c("neighborhood", "interest_level")]  
   neighborhood_df = cbind(neighborhood_df, model.matrix( ~ interest_level - 1, data = neighborhood_df))
@@ -683,12 +702,22 @@ run_xgb = function(train_xgb, train_y, test_xgb){
 
 t1 = generate_df(df, 1)
 
+#class_price = aggregate(price ~ interest_level, data = t1, FUN = median)
+
+# t1$price_ratio_high_median = t1$price/class_price$price[class_price$interest_level == "high"]
+# t1$price_ratio_low_median = t1$price/class_price$price[class_price$interest_level == "low"]
+# t1$price_ratio_medium_median = t1$price/class_price$price[class_price$interest_level == "medium"]
+
 # nbd_count = aggregate(building_id ~ neighborhood, data = t1, FUN=function(x){length(unique(x))})
 # colnames(nbd_count) = c("neighborhood", "building_count")
 # nbd_count$building_count = as.factor(nbd_count$building_count > 10)
 # t1 = merge(t1, nbd_count, by = "neighborhood")
 
 t2 = generate_df(test, 0)
+
+# t2$price_ratio_high_median = t2$price/class_price$price[class_price$interest_level == "high"]
+# t2$price_ratio_low_median = t2$price/class_price$price[class_price$interest_level == "low"]
+# t2$price_ratio_medium_median = t2$price/class_price$price[class_price$interest_level == "medium"]
 
 # for (i in 1:length(feature)){
 # 
@@ -728,8 +757,8 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 #Validation (gbm)
 gbm_val = validate_gbm(t1)
 
-t1_train = get_last_active(t1_train)
-t1_test = get_last_active(t1_test)
+t1 = get_last_active(t1)
+t2 = get_last_active(t2)
 
 t1$building_id = NULL
 t2$building_id = NULL
