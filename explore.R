@@ -262,6 +262,7 @@ generate_df = function(df, train_flag){
                      ,mday=as.factor(sapply(df$created, mday))
                      ,wday=as.factor(sapply(df$created, wday))
                      ,hour=as.numeric(sapply(df$created, lubridate::hour))
+                     ,minute=as.numeric(sapply(df$created, lubridate::minute))
                      #,interest_level=as.factor(unlist(df$interest_level))
                      ,street_address=as.character(unlist(df$street_address)) # parse errors
     )
@@ -489,13 +490,19 @@ get_nbd_scores = function(t1, t2){
   nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = t1, FUN = median)
   colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
   t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
-  t1$price_diff_from_median = as.factor(t1$price > t1$median_price_nbd)
+  t1$price_diff_from_median = t1$price - t1$median_price_nbd
+  t1$price_ratio_with_median = t1$price/t1$median_price_nbd
+  
   t1$median_price_nbd = NULL
   
   t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
   t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
   t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
-  t2$price_diff_from_median = as.factor(t2$price_diff_from_median > 0)
+  # t2$price_diff_from_median = as.factor(t2$price_diff_from_median > 0)
+
+  t2$price_ratio_with_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)]/t2$median_price_nbd[!is.na(t2$median_price_nbd)]
+  t2$price_ratio_with_median[is.na(t2$median_price_nbd)] = 1
+  
   t2$median_price_nbd = NULL
   
   neighborhood_df = t1[, c("neighborhood", "interest_level")]  
