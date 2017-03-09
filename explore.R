@@ -218,8 +218,8 @@ gbm_h2o = function(t1, t2){
                 ,training_frame = train_h2o
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
-                #,nfolds = 5
-                ,ntrees = 2500
+                ,nfolds = 5
+                ,ntrees = 1000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -428,9 +428,12 @@ get_manager_scores = function(t1, t2){
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
   manager_agg$count = rowSums(manager_agg[,c(2:4)])
   
+  manager_price = aggregate(price ~ manager_id, data = manager_df, FUN = median)
+  manager_agg = merge(manager_agg, manager_price, by = "manager_id")
+  
   # manager_agg$popular = as.factor(manager_agg$count > 80)
   # manager_agg$premium = as.factor(manager_agg$interest_levelhigh > 30)
-  manager_agg$first_timer = as.factor(manager_agg$count == 1)
+  # manager_agg$first_timer = as.factor(manager_agg$count == 1)
   
   manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$count
   
@@ -440,7 +443,7 @@ get_manager_scores = function(t1, t2){
   manager_agg$interest_levellow = NULL
   manager_agg$interest_levelhigh = NULL
   manager_agg$interest_levelmedium = NULL
-  manager_agg$count = NULL
+  # manager_agg$count = NULL
 
   t1 = merge(t1, manager_agg, by = "manager_id")
   t1$manager_id = NULL
@@ -494,7 +497,7 @@ get_nbd_scores = function(t1, t2){
   nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = t1, FUN = median)
   colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
   t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
-  t1$price_diff_from_median = t1$price - t1$median_price_nbd
+  # t1$price_diff_from_median = t1$price - t1$median_price_nbd
   t1$price_ratio_with_median = t1$price/t1$median_price_nbd
   
   # nbd_agg_mean = aggregate(price ~ neighborhood + bedrooms, data = t1, FUN = mean)
@@ -507,10 +510,9 @@ get_nbd_scores = function(t1, t2){
   # t1$mean_price_nbd = NULL
   
   t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
-  t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
-  t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
-  # t2$price_diff_from_median = as.factor(t2$price_diff_from_median > 0)
-  
+  # t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
+  # t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
+
   t2$price_ratio_with_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)]/t2$median_price_nbd[!is.na(t2$median_price_nbd)]
   t2$price_ratio_with_median[is.na(t2$median_price_nbd)] = 1
   
