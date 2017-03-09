@@ -343,14 +343,22 @@ generate_df = function(df, train_flag){
     # t1$studio = grepl("studio", tolower(df$description))
     t1$no_fee = grepl("no fee", tolower(df$features))
     # t1$outdoor = grepl("outdoor", tolower(df$features))
-    # 
-    # # t1$manhattan = grepl("manhattan", tolower(df$description))
-    # t1$central_park = grepl("central park", tolower(df$description))
+  
+    hot_keywords = c("manhattan","central park","subway","train","bikeway","columbus circle")
+    hot_keywords_count = as.numeric(grepl(hot_keywords_count[1], tolower(df$description)))
 
-    t1$n_good = t1$n_features + t1$n_photos + t1$n_description 
+    for (i in 2:length(hot_keywords)){
+      keyword = hot_keywords[i]
+      hot_keywords_count = hot_keywords_count + as.numeric(grepl(keyword, tolower(df$description)))
+    }
+    
+    t1$hot_keywords_count = hot_keywords_count
+    
+    t1$n_good = t1$n_features + t1$n_photos + t1$n_description + t1$number_of_9
     t1$n_features = NULL
     t1$n_photos = NULL
     t1$n_description = NULL
+    t1$number_of_9 = NULL
     
     # t1$V2 = grepl("air", tolower(df$features))
     # t1$V3 = grepl("pool", tolower(df$features))
@@ -422,16 +430,15 @@ get_last_active = function(t1){
 
 get_manager_scores = function(t1, t2){
   
-  manager_df = t1[, c("manager_id", "interest_level", "price")]  
+  manager_df = t1[, c("manager_id", "interest_level", "price", "bedrooms")]  
   manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
   
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
   manager_agg$count = rowSums(manager_agg[,c(2:4)])
   
-  manager_price = aggregate(price ~ manager_id, data = manager_df, FUN = median)
-  colnames(manager_price) = c("manager_id", "manager_median_price")
-  manager_agg = merge(manager_agg, manager_price, by = "manager_id")
-  
+  manager_price = aggregate(price ~ manager_id + bedrooms, data = manager_df, FUN = median)
+  colnames(manager_price) = c("manager_id", "bedrooms", "manager_median_price")
+
   # manager_agg$popular = as.factor(manager_agg$count > 80)
   # manager_agg$premium = as.factor(manager_agg$interest_levelhigh > 30)
   # manager_agg$first_timer = as.factor(manager_agg$count == 1)
@@ -446,13 +453,14 @@ get_manager_scores = function(t1, t2){
   manager_agg$interest_levelmedium = NULL
 
   t1 = merge(t1, manager_agg, by = "manager_id")
-  
+  t1 = merge(t1, manager_price, by = c("manager_id", "bedrooms"))  
   # t1$price_ratio_manager_median = t1$price/t1$manager_median_price
   # t1$manager_median_price = NULL
   
   t1$manager_id = NULL
   
   t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
+  t2 = left_join(t2, manager_price, by = c("manager_id", "bedrooms"), copy = TRUE)  
   
   t2$count[is.na(t2$count)] = 1
   # t2$manager_median_price[is.na(t2$manager_median_price)] = median(t2$manager_median_price, na.rm = TRUE)
@@ -782,7 +790,7 @@ t2 = manager_res[[2]]
 
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_21.csv", row.names = FALSE)
+write.csv(pred, "gbm_22.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
