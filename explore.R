@@ -219,7 +219,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 1000
+                ,ntrees = 10000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -430,46 +430,50 @@ get_last_active = function(t1){
 
 get_manager_scores = function(t1, t2){
   
-  manager_df = t1[, c("manager_id", "interest_level", "price", "bedrooms")]  
+  manager_df = t1[, c("manager_id", "interest_level", "price", "bedrooms")]
   manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
-  
+
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
   manager_agg$manager_count = rowSums(manager_agg[,c(2:4)])
-  
+
   manager_price = aggregate(price ~ manager_id + bedrooms, data = manager_df, FUN = median)
   colnames(manager_price) = c("manager_id", "bedrooms", "manager_median_price")
 
   # manager_agg$popular = as.factor(manager_agg$count > 80)
   # manager_agg$premium = as.factor(manager_agg$interest_levelhigh > 30)
   # manager_agg$first_timer = as.factor(manager_agg$count == 1)
-  
+
   manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$manager_count
-  
-  manager_agg$manager_score = 2*manager_agg$interest_levelhigh + 1*manager_agg$interest_levelmedium 
-  manager_agg$manager_score[manager_agg$count < 3] = median(manager_agg$manager_score[manager_agg$count >= 3])
-  
+
+  manager_agg$manager_score = 2*manager_agg$interest_levelhigh + 1*manager_agg$interest_levelmedium
+  manager_agg$manager_score[manager_agg$manager_count < 10] = median(manager_agg$manager_score[manager_agg$manager_count >= 10])
+
   manager_agg$interest_levellow = NULL
   manager_agg$interest_levelhigh = NULL
   manager_agg$interest_levelmedium = NULL
 
   t1 = merge(t1, manager_agg, by = "manager_id")
-  t1 = merge(t1, manager_price, by = c("manager_id", "bedrooms"))  
+  t1 = merge(t1, manager_price, by = c("manager_id", "bedrooms"))
   # t1$price_ratio_manager_median = t1$price/t1$manager_median_price
   # t1$manager_median_price = NULL
   t1$manager_id = NULL
-  
+
   t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
-  t2 = left_join(t2, as.data.table(manager_price), by = c("manager_id", "bedrooms"), copy = TRUE)  
-  
+  t2 = left_join(t2, as.data.table(manager_price), by = c("manager_id", "bedrooms"), copy = TRUE)
+
   t2$manager_count[is.na(t2$manager_count)] = 1
-  # t2$manager_median_price[is.na(t2$manager_median_price)] = median(t2$manager_median_price, na.rm = TRUE)
+  # t2$manager_median_price[is.na(t2$manager_median_price)] = median(t2$manager_median_price, na.rm = TRUE) 
+
   # t2$price_ratio_manager_median = t2$price/t2$manager_median_price
   # t2$manager_median_price = NULL
-  # t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE)
+  
+  t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE) #Leave it as NA and try!
+  
   t2$manager_id = NULL
-  
+
   return(list(t1, t2))
-  
+ 
+   
 }
 
 get_building_scores = function(t1, t2){
