@@ -345,7 +345,7 @@ generate_df = function(df, train_flag){
     # t1$outdoor = grepl("outdoor", tolower(df$features))
   
     hot_keywords = c("manhattan","central park","subway","train","bikeway","columbus circle")
-    hot_keywords_count = as.numeric(grepl(hot_keywords_count[1], tolower(df$description)))
+    hot_keywords_count = as.numeric(grepl(hot_keywords[1], tolower(df$description)))
 
     for (i in 2:length(hot_keywords)){
       keyword = hot_keywords[i]
