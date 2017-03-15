@@ -2,7 +2,7 @@ library(jsonlite)
 library(data.table)
 library(lubridate)
 library(caTools)
-#library(caret)
+library(caret)
 library(e1071)
 library(magrittr)
 library(knitr)
@@ -64,8 +64,6 @@ strdetect_df_test = read.csv("strdetect_test.csv", stringsAsFactors = TRUE)
 #   strdetect_df_test[[paste0("V", as.character(i))]] = as.factor(strdetect_df_test[[paste0("V", as.character(i))]])
 # }
 # t2 = cbind(t2, strdetect_df_test)
-
-
 
 # feature = as.data.frame(table(tolower(unlist(df$features))))
 # feature$Var1 = as.character(feature$Var1)
@@ -219,7 +217,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 10000
+                ,ntrees = 2000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -605,6 +603,22 @@ validate_xgb = function(train_xgb, train_y){
   train_xgb_train <- train_xgb[sample, ]
   train_xgb_val <- train_xgb[-sample, ]
   
+  # train_xgb_train = get_last_active(train_xgb_train)
+  # train_xgb_val = get_last_active(train_xgb_val)
+  
+  t1$building_id = NULL
+  # building_res = get_building_scores(train_xgb_train, train_xgb_val)
+  # train_xgb_train = building_res[[1]]
+  # train_xgb_val = building_res[[2]]
+  
+  nbd_res = get_nbd_scores(train_xgb_train, train_xgb_val)
+  train_xgb_train = nbd_res[[1]]
+  train_xgb_val = nbd_res[[2]]
+  
+  manager_res = get_manager_scores(train_xgb_train, train_xgb_val)
+  train_xgb_train = manager_res[[1]]
+  train_xgb_val = manager_res[[2]]
+  
   train_y_train = train_y[1:nrow(train_xgb_train)]
   
   train_y_val = train_y[37015:length(train_y)]
@@ -613,6 +627,9 @@ validate_xgb = function(train_xgb, train_y){
   train_y_val[train_y_val == 2] = "high"
   train_y_val = as.factor(train_y_val)
   
+  train_xgb_train = xgb(train_xgb_train, 1)
+  train_xgb_val = xgb(train_xgb_val, 1)
+
   pred_df_val = run_xgb(train_xgb_train, train_y_train, train_xgb_val)
   print(MultiLogLoss(y_true = train_y_val, y_pred = as.matrix(pred_df_val[,c("high", "low", "medium")])))
   
@@ -650,10 +667,6 @@ validate_ensemble = function(t1){
 xgb = function(t1, train_flag){
 
   train_x = t1
-  
-  # train_x$yday = NULL
-  # train_x$latitude = NULL
-  # train_x$longitude = NULL
   
   if (train_flag == 1){
     train_x$interest_level = NULL
