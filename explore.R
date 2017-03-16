@@ -309,7 +309,8 @@ generate_df = function(df, train_flag){
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
     t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
     t1$street_number_provided = as.factor(grepl("\\d", t1$display_address))
-    
+    t1$phone_number_provided = as.factor(grepl("\\d\\d\\d-\\d\\d\\d-\\d\\d\\d\\d", df$description))
+
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
     top_streets = street_type$Var1[street_type$Freq > 200]
