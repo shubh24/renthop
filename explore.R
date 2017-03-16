@@ -596,7 +596,12 @@ get_nbd_scores = function(t1, t2){
 }
 
 get_split_score = function(t1, feature_name){
-  return (nrow(t1[(t1$interest_level == "high" | t1$interest_level == "medium") & t1[[feature_name]] == TRUE,])/nrow(t1_train[t1_train[[feature_name]] == TRUE,]))
+  
+  positive_split = (nrow(t1[(t1$interest_level == "high" | t1$interest_level == "medium") & t1[[feature_name]] == TRUE,])/nrow(t1_train[t1_train[[feature_name]] == TRUE,]))
+  
+  negative_split = (nrow(t1[(t1$interest_level == "high" | t1$interest_level == "medium") & t1[[feature_name]] == FALSE,])/nrow(t1_train[t1_train[[feature_name]] == FALSE,]))
+  
+  return (list(positive_split, negative_split))
 }
 
 get_renthop_score = function(t1, t2){
@@ -605,32 +610,49 @@ get_renthop_score = function(t1, t2){
   # street number provided
   
   zero_photo_split = get_split_score(t1, "zero_photos")
+  zero_photo_split_p = zero_photo_split[[1]]
+  zero_photo_split_n = zero_photo_split[[2]]
+  
   zero_building_id_split = get_split_score(t1, "zero_building_id")
+  zero_building_id_split_p = zero_building_id_split[[1]]
+  zero_building_id_split_n = zero_building_id_split[[2]]
+  
   no_fee_split = get_split_score(t1, "no_fee")
+  no_fee_split_p = no_fee_split[[1]]
+  no_fee_split_n = no_fee_split[[2]]
+  
   # last_active_split = get_split_score(t1, "last_active")
   expert_split = get_split_score(t1, "expert")
+  expert_split_p = expert_split[[1]]
+  expert_split_n = expert_split[[2]]
+  
   # manager_count_split = get_split_score(t1, "manager_count")
   phone_number_provided_split = get_split_score(t1, "phone_number_provided")
-  street_number_provided_split = get_split_score(t1, "street_number_provided")
+  phone_number_provided_split_p = phone_number_provided_split[[1]]
+  phone_number_provided_split_n = phone_number_provided_split[[2]]
   
-  t1$renthop_score = as.numeric(t1$no_fee)*no_fee_split +
+  street_number_provided_split = get_split_score(t1, "street_number_provided")
+  street_number_provided_split_p = street_number_provided_split[[1]]
+  street_number_provided_split_n= street_number_provided_split[[2]]
+
+  t1$renthop_score = (as.numeric(t1$no_fee)*no_fee_split_p + mod(as.numeric(t1$no_fee)+1, 2)*no_fee_split_n +
     # as.numeric(t1$last_active > 0)*last_active_split +
-    as.numeric(t1$expert)*expert_split +
+    as.numeric(t1$expert)*expert_split_p + mod(as.numeric(t1$expert)+1, 2)*expert_split_n +
     # as.numeric(t1$manager_count > 1)*manager_count_split +
-    (as.numeric(t1$phone_number_provided) - 1)*phone_number_provided_split +
-    (as.numeric(t1$street_number_provided) - 1)*street_number_provided_split - 
-    (as.numeric(t1$zero_photos) - 1)*zero_photo_split - 
-    (as.numeric(t1$zero_building_id) - 1)*zero_building_id_split
+    (as.numeric(t1$phone_number_provided) - 1)*phone_number_provided_split_p + mod(as.numeric(t1$phone_number_provided), 2)*phone_number_provided_split_n +
+    (as.numeric(t1$street_number_provided) - 1)*street_number_provided_split_p + mod(as.numeric(t1$street_number_provided), 2)*street_number_provided_split_n + 
+    (as.numeric(t1$zero_photos) - 1)*zero_photo_split_p + mod(as.numeric(t1$zero_photos), 2)*zero_building_id_split_n +
+    (as.numeric(t1$zero_building_id) - 1)*zero_building_id_split_p + mod(as.numeric(t1$zero_building_id), 2)*zero_building_id_split_n)/6
     
-  t2$renthop_score = as.numeric(t2$no_fee)*no_fee_split +
+  t2$renthop_score = (as.numeric(t2$no_fee)*no_fee_split_p + mod(as.numeric(t2$no_fee)+1, 2)*no_fee_split_n +
     # as.numeric(t2$last_active > 0)*last_active_split +
-    as.numeric(t2$expert)*expert_split +
+    as.numeric(t2$expert)*expert_split_p + mod(as.numeric(t2$expert)+1, 2)*expert_split_n +
     # as.numeric(t2$manager_count > 1)*manager_count_split +
-    (as.numeric(t2$phone_number_provided) - 1)*phone_number_provided_split +
-    (as.numeric(t2$street_number_provided) - 1)*street_number_provided_split - 
-    (as.numeric(t2$zero_photos) - 1)*zero_photo_split - 
-    (as.numeric(t2$zero_building_id) - 1)*zero_building_id_split
-    
+    (as.numeric(t2$phone_number_provided) - 1)*phone_number_provided_split_p + mod(as.numeric(t2$phone_number_provided), 2)*phone_number_provided_split_n +
+    (as.numeric(t2$street_number_provided) - 1)*street_number_provided_split_p + mod(as.numeric(t2$street_number_provided), 2)*street_number_provided_split_n + 
+    (as.numeric(t2$zero_photos) - 1)*zero_photo_split_p + mod(as.numeric(t2$zero_photos), 2)*zero_building_id_split_n +
+    (as.numeric(t2$zero_building_id) - 1)*zero_building_id_split_p + mod(as.numeric(t2$zero_building_id), 2)*zero_building_id_split_n)/6
+  
   # t1$zero_photos = NULL
   # t1$zero_building_id = NULL
   # t1$no_fee = NULL
