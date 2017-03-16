@@ -428,7 +428,7 @@ get_last_active = function(t1){
 
 get_manager_scores = function(t1, t2){
   
-  manager_df = t1[, c("manager_id", "interest_level", "price", "bedrooms")]
+  manager_df = t1[, c("manager_id", "interest_level", "price", "bedrooms", "neighborhood")]
   manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
 
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
@@ -437,6 +437,36 @@ get_manager_scores = function(t1, t2){
   manager_price = aggregate(price ~ manager_id + bedrooms, data = manager_df, FUN = median)
   colnames(manager_price) = c("manager_id", "bedrooms", "manager_median_price")
 
+  manager_df$dummy = 1
+  manager_expertise = aggregate(dummy ~ manager_id + neighborhood, data = manager_df, FUN = sum)
+  manager_expertise_df = data.frame()
+    
+  for(i in 1:length(levels(manager_expertise$manager_id))){
+    specific_manager_expertise = manager_expertise[manager_expertise$manager_id == levels(manager_expertise$manager_id)[i],]
+    expert_neighborhoods = as.vector(specific_manager_expertise$neighborhood[with(specific_manager_expertise, order(-dummy))][1:3])
+    
+    manager_expertise_df = rbind(manager_expertise_df, as.data.frame(cbind(as.character(levels(manager_expertise$manager_id)[i]), expert_neighborhoods[1], expert_neighborhoods[2], expert_neighborhoods[3]), stringsAsFactors = FALSE))  
+    
+  }
+  colnames(manager_expertise_df) = c("manager_id", "nbd1","nbd2","nbd3")
+  
+  check_expert_nbd = merge(manager_df[, c("manager_id", "neighborhood")], manager_expertise_df, by = "manager_id")
+  check_expert_nbd$neighborhood = as.character(check_expert_nbd$neighborhood)
+  
+  tf = c()
+  check_expert_nbd$expert = apply(check_expert_nbd, 1, function(x){
+
+    if (length(intersect(x[["neighborhood"]], c(x[["nbd1"]], x[["nbd2"]], x[["nbd3"]]))) > 0){
+      tf = c(tf, TRUE)
+    }
+    else{tf = c(tf, FALSE)}
+
+    return (tf)
+  })
+  check_expert_nbd$nbd1 = NULL
+  check_expert_nbd$nbd2 = NULL
+  check_expert_nbd$nbd3 = NULL
+  
   # manager_agg$popular = as.factor(manager_agg$count > 80)
   # manager_agg$premium = as.factor(manager_agg$interest_levelhigh > 30)
   # manager_agg$first_timer = as.factor(manager_agg$count == 1)
@@ -452,13 +482,15 @@ get_manager_scores = function(t1, t2){
 
   t1 = merge(t1, manager_agg, by = "manager_id")
   t1 = merge(t1, manager_price, by = c("manager_id", "bedrooms"))
+  t1 = unique(left_join(t1, check_expert_nbd, by = c("manager_id", "neighborhood")))
   # t1$price_ratio_manager_median = t1$price/t1$manager_median_price
   # t1$manager_median_price = NULL
   t1$manager_id = NULL
 
   t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
   t2 = left_join(t2, as.data.table(manager_price), by = c("manager_id", "bedrooms"), copy = TRUE)
-
+  t2 = unique(left_join(t2, check_expert_nbd, by = c("manager_id", "neighborhood"), copy = TRUE))
+  
   t2$manager_count[is.na(t2$manager_count)] = 1
   # t2$manager_median_price[is.na(t2$manager_median_price)] = median(t2$manager_median_price, na.rm = TRUE) 
 
@@ -579,13 +611,13 @@ validate_gbm = function(t1){
   # t1_train = building_res[[1]]
   # t1_test = building_res[[2]]
 
-  nbd_res = get_nbd_scores(t1_train, t1_test)
-  t1_train = nbd_res[[1]]
-  t1_test = nbd_res[[2]]
-  
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
   t1_test = manager_res[[2]]
+  
+  nbd_res = get_nbd_scores(t1_train, t1_test)
+  t1_train = nbd_res[[1]]
+  t1_test = nbd_res[[2]]
   
   res_val = gbm_h2o(t1_train, t1_test)
 
