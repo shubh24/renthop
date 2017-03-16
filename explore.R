@@ -595,8 +595,62 @@ get_nbd_scores = function(t1, t2){
   return(list(t1, t2))
 }
 
+get_split_score = function(t1, feature_name){
+  return (nrow(t1[(t1$interest_level == "high" | t1$interest_level == "medium") & t1[[feature_name]] == TRUE,])/nrow(t1_train[t1_train[[feature_name]] == TRUE,]))
+}
+
+get_renthop_score = function(t1, t2){
+  # features in renthop score -- quality of listing - zero_photos, zero_building_id, no_fee
+  # manager quality -- logged in within 24hrs, recently posted listing(last_active), expert in nbd, manager reviews, manager count(first timer), phone_number_provided(registered?)
+  # street number provided
+  
+  zero_photo_split = get_split_score(t1, "zero_photos")
+  zero_building_id_split = get_split_score(t1, "zero_building_id")
+  no_fee_split = get_split_score(t1, "no_fee")
+  # last_active_split = get_split_score(t1, "last_active")
+  expert_split = get_split_score(t1, "expert")
+  # manager_count_split = get_split_score(t1, "manager_count")
+  phone_number_provided_split = get_split_score(t1, "phone_number_provided")
+  street_number_provided_split = get_split_score(t1, "street_number_provided")
+  
+  t1$renthop_score = as.numeric(t1$no_fee)*no_fee_split +
+    # as.numeric(t1$last_active > 0)*last_active_split +
+    as.numeric(t1$expert)*expert_split +
+    # as.numeric(t1$manager_count > 1)*manager_count_split +
+    (as.numeric(t1$phone_number_provided) - 1)*phone_number_provided_split +
+    (as.numeric(t1$street_number_provided) - 1)*street_number_provided_split - 
+    (as.numeric(t1$zero_photos) - 1)*zero_photo_split - 
+    (as.numeric(t1$zero_building_id) - 1)*zero_building_id_split
+    
+  t2$renthop_score = as.numeric(t2$no_fee)*no_fee_split +
+    # as.numeric(t2$last_active > 0)*last_active_split +
+    as.numeric(t2$expert)*expert_split +
+    # as.numeric(t2$manager_count > 1)*manager_count_split +
+    (as.numeric(t2$phone_number_provided) - 1)*phone_number_provided_split +
+    (as.numeric(t2$street_number_provided) - 1)*street_number_provided_split - 
+    (as.numeric(t2$zero_photos) - 1)*zero_photo_split - 
+    (as.numeric(t2$zero_building_id) - 1)*zero_building_id_split
+    
+  # t1$zero_photos = NULL
+  # t1$zero_building_id = NULL
+  # t1$no_fee = NULL
+  # t1$expert = NULL
+  # t1$phone_number_provided = NULL
+  # t1$street_number_provided = NULL
+  # 
+  # t2$zero_photos = NULL
+  # t2$zero_building_id = NULL
+  # t2$no_fee = NULL
+  # t2$expert = NULL
+  # t2$phone_number_provided = NULL
+  # t2$street_number_provided = NULL
+  
+  return (list(t1, t2))
+}
+
 validate_gbm = function(t1){
   set.seed(101) 
+  t1$building_id = NULL
   
   sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
   t1_train <- t1[sample, ]
@@ -607,7 +661,6 @@ validate_gbm = function(t1){
   t1_train = get_last_active(t1_train)
   t1_test = get_last_active(t1_test)
 
-  t1$building_id = NULL
   # building_res = get_building_scores(t1_train, t1_test)
   # t1_train = building_res[[1]]
   # t1_test = building_res[[2]]
@@ -619,6 +672,10 @@ validate_gbm = function(t1){
   nbd_res = get_nbd_scores(t1_train, t1_test)
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
+
+  renthop_res = get_renthop_score(t1_train, t1_test)
+  t1_train = renthop_res[[1]]
+  t1_test = renthop_res[[2]]
   
   res_val = gbm_h2o(t1_train, t1_test)
 
@@ -631,6 +688,7 @@ validate_gbm = function(t1){
 
 validate_xgb = function(train_xgb, train_y){
   set.seed(101) 
+  t1$building_id = NULL
   
   sample <- sample.int(nrow(train_xgb), floor(.75*nrow(train_xgb)), replace = F)
   train_xgb_train <- train_xgb[sample, ]
@@ -639,7 +697,6 @@ validate_xgb = function(train_xgb, train_y){
   # train_xgb_train = get_last_active(train_xgb_train)
   # train_xgb_val = get_last_active(train_xgb_val)
   
-  t1$building_id = NULL
   # building_res = get_building_scores(train_xgb_train, train_xgb_val)
   # train_xgb_train = building_res[[1]]
   # train_xgb_val = building_res[[2]]
