@@ -485,7 +485,8 @@ get_manager_scores = function(t1, t2){
   t1 = merge(t1, manager_price, by = c("manager_id", "bedrooms"))
   t1 = unique(left_join(t1, check_expert_nbd, by = c("manager_id", "neighborhood")))
   # t1$price_ratio_manager_median = t1$price/t1$manager_median_price
-  # t1$manager_median_price = NULL
+  t1$manager_opportunity = (t1$price - t1$manager_median_price)/t1$manager_median_price
+  t1$manager_median_price = NULL
   t1$manager_id = NULL
 
   t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
@@ -494,9 +495,9 @@ get_manager_scores = function(t1, t2){
   
   t2$manager_count[is.na(t2$manager_count)] = 1
   # t2$manager_median_price[is.na(t2$manager_median_price)] = median(t2$manager_median_price, na.rm = TRUE) 
-
   # t2$price_ratio_manager_median = t2$price/t2$manager_median_price
-  # t2$manager_median_price = NULL
+  t2$manager_opportunity = (t2$price - t2$manager_median_price)/t2$manager_median_price
+  t2$manager_median_price = NULL
   
   t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE) #Leave it as NA and try!
   
@@ -558,9 +559,9 @@ get_nbd_scores = function(t1, t2){
   nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = t1, FUN = median)
   colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
   t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
-
+  t1$nbd_opportunity = (t1$price - t1$median_price_nbd)/t1$median_price_nbd
   # t1$price_ratio_with_median = t1$price/t1$median_price_nbd
-  # t1$median_price_nbd = NULL
+  t1$median_price_nbd = NULL
   
   t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
   # t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
@@ -568,8 +569,8 @@ get_nbd_scores = function(t1, t2){
 
   # t2$price_ratio_with_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)]/t2$median_price_nbd[!is.na(t2$median_price_nbd)]
   # t2$price_ratio_with_median[is.na(t2$median_price_nbd)] = 1
-  
-  # t2$median_price_nbd = NULL
+  t2$nbd_opportunity = (t2$price - t2$median_price_nbd)/t2$median_price_nbd
+  t2$median_price_nbd = NULL
   
   neighborhood_df = t1[, c("neighborhood", "interest_level")]  
   neighborhood_df = cbind(neighborhood_df, model.matrix( ~ interest_level - 1, data = neighborhood_df))
