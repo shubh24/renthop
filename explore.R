@@ -353,11 +353,11 @@ generate_df = function(df, train_flag){
     
     t1$hot_keywords_count = hot_keywords_count
     
-    t1$n_good = t1$n_features + t1$n_photos + t1$n_description + t1$number_of_9
-    t1$n_features = NULL
-    t1$n_photos = NULL
-    t1$n_description = NULL
-    t1$number_of_9 = NULL
+    # t1$n_good = t1$n_features + t1$n_photos + t1$n_description + t1$number_of_9
+    # t1$n_features = NULL
+    # t1$n_photos = NULL
+    # t1$n_description = NULL
+    # t1$number_of_9 = NULL
     
     # t1$V2 = grepl("air", tolower(df$features))
     # t1$V3 = grepl("pool", tolower(df$features))
@@ -579,7 +579,7 @@ get_nbd_scores = function(t1, t2){
   neighborhood_agg$count = rowSums(neighborhood_agg[,c(2:4)])
   neighborhood_agg[, c(2:4)] = neighborhood_agg[, c(2:4)]/neighborhood_agg$count
   neighborhood_agg$neighborhood_score = 2*neighborhood_agg$interest_levelhigh + neighborhood_agg$interest_levelmedium 
-  neighborhood_agg$neighborhood_score[neighborhood_agg$count < 3] = median(neighborhood_agg$neighborhood_score[neighborhood_agg$count >= 3])
+  neighborhood_agg$neighborhood_score[neighborhood_agg$count < 20] = median(neighborhood_agg$neighborhood_score[neighborhood_agg$count >= 20])
   
   neighborhood_agg$interest_levellow = NULL
   neighborhood_agg$interest_levelhigh = NULL
