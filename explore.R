@@ -670,6 +670,27 @@ get_renthop_score = function(t1, t2){
   return (list(t1, t2))
 }
 
+get_hour_freq = function(t1, t2){
+
+  t1_hour = t1[, c("listing_id", "created")]
+  t2_hour = t2[, c("listing_id", "created")]
+  hour_df = rbind(t1_hour, t2_hour)
+  
+  hour_df$hour_serial = as.integer(difftime(hour_df$created, min(hour_df$created), units = "hours"))
+  
+  hour_serial_df = as.data.frame(table(as.factor(hour_df$hour_serial)))
+  colnames(hour_serial_df) = c("hour_serial", "hour_freq")
+  hour_serial_df$hour_serial = as.integer(hour_serial_df$hour_serial)
+
+  hour_df = merge(hour_df, hour_serial_df, by = "hour_serial")
+  hour_df$hour_serial = NULL
+  
+  t1 = merge(t1, hour_df[, c("listing_id", "hour_freq")], by = "listing_id")
+  t2 = merge(t2, hour_df[, c("listing_id", "hour_freq")], by = "listing_id")
+  
+  return(list(t1, t2))
+}
+
 validate_gbm = function(t1){
   set.seed(101) 
   t1$building_id = NULL
@@ -695,10 +716,14 @@ validate_gbm = function(t1){
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
 
+  hour_res = get_hour_freq(t1_train, t1_test)
+  t1_train = hour_res[[1]]
+  t1_test = hour_res[[2]]
+  
   # renthop_res = get_renthop_score(t1_train, t1_test)
   # t1_train = renthop_res[[1]]
   # t1_test = renthop_res[[2]]
-  
+
   res_val = gbm_h2o(t1_train, t1_test)
 
   print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
