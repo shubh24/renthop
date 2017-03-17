@@ -217,7 +217,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 2000
+                ,ntrees = 200
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -255,8 +255,6 @@ generate_df = function(df, train_flag){
                      ,listing_id=unlist(df$listing_id)
                      ,manager_id=as.factor(unlist(df$manager_id))
                      ,price=unlist(df$price)
-                     #,yday=as.factor(sapply(df$created, yday))
-                     #,month=as.factor(sapply(df$created, lubridate::month))
                      ,mday=as.numeric(sapply(df$created, mday))
                      ,wday=as.factor(sapply(df$created, wday))
                      ,hour=as.numeric(sapply(df$created, lubridate::hour))
@@ -543,10 +541,14 @@ get_building_scores = function(t1, t2){
   colnames(building_price) = c( "building_id", "bedrooms", "building_median_price")
   
   t1 = merge(t1, building_price, by = c("building_id", "bedrooms"))
-  t1$building_median_price[t1$zero_building_id == TRUE] = NA
+  t1$building_opportunity = (t1$price - t1$building_median_price)/t1$building_median_price
+  t1$building_opportunity[t1$zero_building_id == TRUE] = NA
+  t1$building_median_price = NULL
   
   t2 = left_join(t2, data.table(building_price), by = c("building_id", "bedrooms"), copy = TRUE)
-  t2$building_median_price[t2$zero_building_id == TRUE] = NA
+  t2$building_opportunity = (t2$price - t2$building_median_price)/t2$building_median_price
+  t2$building_opportunity[t2$zero_building_id == TRUE] = NA
+  t2$building_median_price = NULL
   
   t1$building_id = NULL
   t2$building_id = NULL
@@ -689,6 +691,30 @@ get_hour_freq = function(t1, t2){
   return(list(t1, t2))
 }
 
+get_time_scores = function(t1, t2){
+
+  min_created = min(min(t1$created), min(t2$created))
+  
+  t1$hour_serial = as.integer(difftime(t1$created, min_created, units = "hours"))
+  t2$hour_serial = as.integer(difftime(t2$created, min_created, units = "hours"))
+  
+  time_nbd_df = rbind(t1[, c("listing_id", "created", "neighborhood", "bedrooms", "price", "hour_serial")], t2[, c("listing_id", "created",  "neighborhood", "bedrooms", "price", "hour_serial")])
+  # time_nbd_df$hour_serial = as.integer(difftime(time_nbd_df$created, min(time_nbd_df$created), units = "hours"))
+  
+  time_nbd_df$hour_median_price = aggregate(price ~ neighborhood + bedrooms + hour_serial, data = time_nbd_df, FUN = median)
+  time_nbd_df$price = NULL
+  
+  t1 = merge(t1, time_nbd_df, by = c("neighborhood", "bedrooms", "hour_serial"))
+  t2 = merge(t2, time_nbd_df, by = c("neighborhood", "bedrooms", "hour_serial"))
+  
+  t1$hour_opportunity = (t1$price - t1$hour_median_price)/t1$hour_median_price
+  t1$hour_median_price = NULL
+  t2$hour_opportunity = (t2$price - t2$hour_median_price)/t2$hour_median_price
+  t2$hour_median_price = NULL
+  
+  return (list(t1, t2))
+}
+
 validate_gbm = function(t1){
   set.seed(101) 
   t1$building_id = NULL
@@ -706,6 +732,10 @@ validate_gbm = function(t1){
   # t1_train = building_res[[1]]
   # t1_test = building_res[[2]]
 
+  time_res = get_time_scores(t1_train, t1_test)
+  t1_train = time_res[[1]]
+  t1_test = time_res[[2]]
+  
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
   t1_test = manager_res[[2]]
