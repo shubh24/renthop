@@ -217,7 +217,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 1000
+                ,ntrees = 2000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -369,8 +369,8 @@ generate_df = function(df, train_flag){
     # t1$V9 = grepl("terrace", tolower(df$features))
     # t1$V10 = grepl("yoga", tolower(df$features))
     
-    t1$price = 1/t1$price
-    t1$price_per_room = 1/t1$price_per_room
+    t1$price = log(t1$price)
+    t1$price_per_room = log(t1$price_per_room)
 
     return (t1)
 }
@@ -673,15 +673,12 @@ get_renthop_score = function(t1, t2){
 
 get_hour_freq = function(t1, t2){
 
-  t1_hour = t1[, c("listing_id", "created")]
-  t2_hour = t2[, c("listing_id", "created")]
-  hour_df = rbind(t1_hour, t2_hour)
+  hour_df = rbind(t1[, c("listing_id", "created")], t2[, c("listing_id", "created")])
   
   hour_df$hour_serial = as.integer(difftime(hour_df$created, min(hour_df$created), units = "hours"))
   
-  hour_serial_df = as.data.frame(table(as.factor(hour_df$hour_serial)))
+  hour_serial_df = as.data.frame(table(hour_df$hour_serial))
   colnames(hour_serial_df) = c("hour_serial", "hour_freq")
-  hour_serial_df$hour_serial = as.integer(hour_serial_df$hour_serial)
 
   hour_df = merge(hour_df, hour_serial_df, by = "hour_serial")
   hour_df$hour_serial = NULL
@@ -928,17 +925,21 @@ t2 = get_last_active(t2)
 t1$building_id = NULL
 t2$building_id = NULL
 
-nbd_res = get_nbd_scores(t1, t2)
-t1 = nbd_res[[1]]
-t2 = nbd_res[[2]]
-
 manager_res = get_manager_scores(t1, t2)
 t1 = manager_res[[1]]
 t2 = manager_res[[2]]
 
+nbd_res = get_nbd_scores(t1, t2)
+t1 = nbd_res[[1]]
+t2 = nbd_res[[2]]
+
+hour_res = get_hour_freq(t1, t2)
+t1 = hour_res[[1]]
+t2 = hour_res[[2]]
+
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_22.csv", row.names = FALSE)
+write.csv(pred, "gbm_24.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
