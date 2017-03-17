@@ -205,7 +205,7 @@ gbm_h2o = function(t1, t2){
 
   feature_names = names(t1)
   feature_names = feature_names[!feature_names %in% c("created")]
-  feature_names = feature_names[!feature_names %in% c("listing_id")]
+  # feature_names = feature_names[!feature_names %in% c("listing_id")]
   feature_names = feature_names[!feature_names %in% c("interest_level")]
 
   train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
@@ -217,7 +217,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 2000
+                ,ntrees = 1000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -597,9 +597,9 @@ get_nbd_scores = function(t1, t2){
 
 get_split_score = function(t1, feature_name){
   
-  positive_split = (nrow(t1[(t1$interest_level == "high" | t1$interest_level == "medium") & t1[[feature_name]] == TRUE,])/nrow(t1_train[t1_train[[feature_name]] == TRUE,]))
+  positive_split = (nrow(t1[(t1$interest_level == "high") & t1[[feature_name]] == TRUE,])/nrow(t1_train[t1_train[[feature_name]] == TRUE,]))
   
-  negative_split = (nrow(t1[(t1$interest_level == "high" | t1$interest_level == "medium") & t1[[feature_name]] == FALSE,])/nrow(t1_train[t1_train[[feature_name]] == FALSE,]))
+  negative_split = (nrow(t1[(t1$interest_level == "high") & t1[[feature_name]] == FALSE,])/nrow(t1_train[t1_train[[feature_name]] == FALSE,]))
   
   return (list(positive_split, negative_split))
 }
@@ -695,9 +695,9 @@ validate_gbm = function(t1){
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
 
-  renthop_res = get_renthop_score(t1_train, t1_test)
-  t1_train = renthop_res[[1]]
-  t1_test = renthop_res[[2]]
+  # renthop_res = get_renthop_score(t1_train, t1_test)
+  # t1_train = renthop_res[[1]]
+  # t1_test = renthop_res[[2]]
   
   res_val = gbm_h2o(t1_train, t1_test)
 
