@@ -38,6 +38,9 @@ test = fromJSON("test.json")
 nbd_train = read.csv("neighborhood_train.csv", stringsAsFactors = TRUE)
 nbd_test = read.csv("neighborhood_test.csv", stringsAsFactors = TRUE)
 
+town_train = read.csv("town_train.csv", stringsAsFactors = FALSE)
+town_test = read.csv("town_test.csv", stringsAsFactors = FALSE)
+
 subway_train = read.csv("subway_train.csv", stringsAsFactors = TRUE)
 subway_test = read.csv("subway_test.csv", stringsAsFactors = TRUE)
 
@@ -217,7 +220,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 200
+                ,ntrees = 4000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -268,6 +271,7 @@ generate_df = function(df, train_flag){
       #t1 = cbind(t1, cv_train)
       #names(t1)[names(t1) == "cv_train"] = "cv_count"
       t1 = merge(t1, nbd_train, by = "listing_id")
+      t1 = merge(t1, town_train, by = "listing_id")
       t1 = merge(t1, subway_train, by = "listing_id")
       t1$relevant_features = rowSums(strdetect_df)/t1$n_features
       t1$relevant_features[is.na(t1$relevant_features)] = 0
@@ -276,13 +280,15 @@ generate_df = function(df, train_flag){
       #t1 = cbind(t1, cv_test)
       #names(t1)[names(t1) == "cv_test"] = "cv_count"
       t1 = merge(t1, nbd_test, by = "listing_id")
+      t1 = merge(t1, town_test, by = "listing_id")
       t1 = merge(t1, subway_test, by = "listing_id")
       t1$relevant_features = rowSums(strdetect_df_test)/t1$n_features
     }
     
-    # t1$caps_percentage = length(regmatches(x, gregexpr("[A-Z]", x, perl=TRUE)))/nchar(x)}) #write a faster method
     t1$caps_count = sapply(regmatches(as.vector(t1$description), gregexpr("[A-Z]", as.vector(t1$description), perl=TRUE)), length)
     t1$caps_count = t1$caps_count/nchar(t1$description)
+
+    t1$bang_count = sapply(regmatches(as.vector(t1$description), gregexpr("!", as.vector(t1$description), perl=TRUE)), length)
     
     sentiment = get_nrc_sentiment(t1$description)
     t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
@@ -343,6 +349,7 @@ generate_df = function(df, train_flag){
     # t1$luxury_or_not = grepl("luxury", tolower(df$description))
     # t1$studio = grepl("studio", tolower(df$description))
     t1$no_fee = grepl("no fee", tolower(df$features))
+    t1$featured = grepl("featured", tolower(df$features))
     # t1$outdoor = grepl("outdoor", tolower(df$features))
   
     hot_keywords = c("manhattan","central park","subway","train","bikeway","columbus circle")
@@ -476,7 +483,7 @@ get_manager_scores = function(t1, t2){
 
   manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$manager_count
 
-  manager_agg$manager_score = 2*manager_agg$interest_levelhigh + 1*manager_agg$interest_levelmedium
+  manager_agg$manager_score = 2^(manager_agg$interest_levelhigh + manager_agg$interest_levelmedium)
   manager_agg$manager_score[manager_agg$manager_count < 10] = median(manager_agg$manager_score[manager_agg$manager_count >= 10])
 
   manager_agg$interest_levellow = NULL
@@ -488,7 +495,7 @@ get_manager_scores = function(t1, t2){
   t1 = unique(left_join(t1, check_expert_nbd, by = c("manager_id", "neighborhood")))
   # t1$price_ratio_manager_median = t1$price/t1$manager_median_price
   t1$manager_opportunity = (t1$price - t1$manager_median_price)/t1$manager_median_price
-  t1$manager_opportunity_pr = (t1$price_per_room - t1$manager_median_price)/t1$manager_median_price
+  # t1$manager_opportunity_pr = (t1$price_per_room - t1$manager_median_price)/t1$manager_median_price
   t1$manager_median_price = NULL
   t1$manager_id = NULL
 
@@ -500,7 +507,7 @@ get_manager_scores = function(t1, t2){
   # t2$manager_median_price[is.na(t2$manager_median_price)] = median(t2$manager_median_price, na.rm = TRUE) 
   # t2$price_ratio_manager_median = t2$price/t2$manager_median_price
   t2$manager_opportunity = (t2$price - t2$manager_median_price)/t2$manager_median_price
-  t2$manager_opportunity_pr = (t2$price_per_room - t2$manager_median_price)/t2$manager_median_price
+  # t2$manager_opportunity_pr = (t2$price_per_room - t2$manager_median_price)/t2$manager_median_price
   t2$manager_median_price = NULL
   
   t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE) #Leave it as NA and try!
@@ -562,13 +569,57 @@ get_building_scores = function(t1, t2){
   return(list(t1,t2))
 }
 
+get_town_scores = function(t1, t2){
+  
+  town_agg = aggregate(price ~ town + bedrooms, data = t1, FUN = median)
+  colnames(town_agg)[colnames(town_agg) == "price"] = "median_price_town"
+  t1 = merge(t1, town_agg, by = c("town", "bedrooms"))
+  t1$town_opportunity = (t1$price - t1$median_price_town)/t1$median_price_town
+  t1$town_opportunity_pr = (t1$price_per_room - t1$median_price_town)/t1$median_price_town
+  # t1$price_ratio_with_median = t1$price/t1$median_price_town
+  t1$median_price_town = NULL
+  
+  t2 = left_join(t2, as.data.table(town_agg), by = c("town", "bedrooms"))
+  # t2$price_diff_from_median[!is.na(t2$median_price_town)] = t2$price[!is.na(t2$median_price_town)] - t2$median_price_town[!is.na(t2$median_price_town)]
+  # t2$price_diff_from_median[is.na(t2$median_price_town)] = 0
+  
+  # t2$price_ratio_with_median[!is.na(t2$median_price_town)] = t2$price[!is.na(t2$median_price_town)]/t2$median_price_town[!is.na(t2$median_price_town)]
+  # t2$price_ratio_with_median[is.na(t2$median_price_town)] = 1
+  t2$town_opportunity = (t2$price - t2$median_price_town)/t2$median_price_town
+  t2$town_opportunity_pr = (t2$price_per_room - t2$median_price_town)/t2$median_price_town
+  t2$median_price_town = NULL
+  
+  town_df = t1[, c("town", "interest_level")]  
+  town_df = cbind(town_df, model.matrix( ~ interest_level - 1, data = town_df))
+  town_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ town, data = town_df, FUN = sum)
+  
+  town_agg$count = rowSums(town_agg[,c(2:4)])
+  town_agg[, c(2:4)] = town_agg[, c(2:4)]/town_agg$count
+  town_agg$town_score = 2*town_agg$interest_levelhigh + town_agg$interest_levelmedium 
+  town_agg$town_score[town_agg$count < 20] = median(town_agg$town_score[town_agg$count >= 20])
+  
+  town_agg$interest_levellow = NULL
+  town_agg$interest_levelhigh = NULL
+  town_agg$interest_levelmedium = NULL
+  town_agg$count = NULL
+  
+  t1 = merge(t1, town_agg, by = "town")
+  t1$town = NULL
+  
+  t2 = left_join(t2, as.data.table(town_agg), by = "town")
+  # t2$town_score[is.na(t2$town_score)] = median(t2$town_score, na.rm = TRUE)
+  t2$town = NULL
+  
+  return(list(t1, t2))
+}
+
 get_nbd_scores = function(t1, t2){
 
   nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = t1, FUN = median)
   colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
   t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
   t1$nbd_opportunity = (t1$price - t1$median_price_nbd)/t1$median_price_nbd
-  t1$nbd_opportunity_pr = (t1$price_per_room - t1$median_price_nbd)/t1$median_price_nbd
+  # t1$nbd_opportunity_pr = (t1$price_per_room - t1$median_price_nbd)/t1$median_price_nbd
   # t1$price_ratio_with_median = t1$price/t1$median_price_nbd
   t1$median_price_nbd = NULL
   
@@ -579,7 +630,7 @@ get_nbd_scores = function(t1, t2){
   # t2$price_ratio_with_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)]/t2$median_price_nbd[!is.na(t2$median_price_nbd)]
   # t2$price_ratio_with_median[is.na(t2$median_price_nbd)] = 1
   t2$nbd_opportunity = (t2$price - t2$median_price_nbd)/t2$median_price_nbd
-  t2$nbd_opportunity_pr = (t2$price_per_room - t2$median_price_nbd)/t2$median_price_nbd
+  # t2$nbd_opportunity_pr = (t2$price_per_room - t2$median_price_nbd)/t2$median_price_nbd
   t2$median_price_nbd = NULL
   
   neighborhood_df = t1[, c("neighborhood", "interest_level")]  
@@ -681,6 +732,24 @@ get_renthop_score = function(t1, t2){
   return (list(t1, t2))
 }
 
+get_bulk_listing = function(t1, t2){
+
+    hour_df = rbind(t1[, c("listing_id", "created", "manager_id")], t2[, c("listing_id", "created", "manager_id")])
+    hour_df$hour_serial = as.integer(difftime(hour_df$created, min(hour_df$created), units = "hours"))
+    
+    # hour_serial_df = as.data.frame(table(hour_df$hour_serial))
+    hour_df$dummy = 1
+    hour_serial_df = aggregate(dummy ~ hour_serial + manager_id, data = hour_df, FUN = sum)
+    colnames(hour_serial_df) = c("hour_serial", "manager_id", "hour_manager_freq")
+    
+    hour_df = merge(hour_df, hour_serial_df, by = c("manager_id", "hour_serial"))
+    
+    t1 = merge(t1, hour_df[, c("listing_id", "hour_manager_freq")], by = "listing_id")
+    t2 = merge(t2, hour_df[, c("listing_id", "hour_manager_freq")], by = "listing_id")
+    
+    return(list(t1, t2))
+}
+
 get_hour_freq = function(t1, t2){
 
   hour_df = rbind(t1[, c("listing_id", "created", "neighborhood")], t2[, c("listing_id", "created", "neighborhood")])
@@ -723,6 +792,20 @@ get_time_scores = function(t1, t2){
   return (list(t1, t2))
 }
 
+get_specialized_mangers = function(t1, t2){s
+  
+  nbd_manager = rbind(t1[, c("listing_id", "neighborhood", "manager_id")], t2[, c("listing_id", "neighborhood", "manager_id")])
+  nbd_manager$dummy = 1
+  
+  nbd_specialized = aggregate(dummy ~ neighborhood + manager_id, data = nbd_manager, FUN = sum)
+  colnames(nbd_specialized)[colnames(nbd_specialized) == "dummy"] = "nbd_manager_count"
+  
+  t1 = merge(t1, nbd_specialized, by = c("neighborhood", "manager_id"))
+  t2 = merge(t2, nbd_specialized, by = c("neighborhood", "manager_id"))
+
+  return (list(t1, t2))  
+}
+
 validate_gbm = function(t1){
   set.seed(101) 
   t1$building_id = NULL
@@ -743,6 +826,18 @@ validate_gbm = function(t1){
   # time_res = get_time_scores(t1_train, t1_test)
   # t1_train = time_res[[1]]
   # t1_test = time_res[[2]]
+  
+  # town_res = get_town_scores(t1_train, t1_test)
+  # t1_train = town_res[[1]]
+  # t1_test = town_res[[2]]
+  
+  nbd_manager_res = get_specialized_mangers(t1_train, t1_test)
+  t1_train = nbd_manager_res[[1]]
+  t1_test = nbd_manager_res[[2]]
+  
+  # bulk_res = get_bulk_listing(t1_train, t1_test)
+  # t1_train = bulk_res[[1]]
+  # t1_test = bulk_res[[2]]
   
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
@@ -963,21 +1058,25 @@ t2 = get_last_active(t2)
 t1$building_id = NULL
 t2$building_id = NULL
 
+nbd_manager_res = get_specialized_mangers(t1, t2)
+t1 = nbd_manager_res[[1]]
+t2 = nbd_manager_res[[2]]
+
 manager_res = get_manager_scores(t1, t2)
 t1 = manager_res[[1]]
 t2 = manager_res[[2]]
-
-nbd_res = get_nbd_scores(t1, t2)
-t1 = nbd_res[[1]]
-t2 = nbd_res[[2]]
 
 hour_res = get_hour_freq(t1, t2)
 t1 = hour_res[[1]]
 t2 = hour_res[[2]]
 
+nbd_res = get_nbd_scores(t1, t2)
+t1 = nbd_res[[1]]
+t2 = nbd_res[[2]]
+
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_24.csv", row.names = FALSE)
+write.csv(pred, "gbm_25.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
