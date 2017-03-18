@@ -280,6 +280,10 @@ generate_df = function(df, train_flag){
       t1$relevant_features = rowSums(strdetect_df_test)/t1$n_features
     }
     
+    # t1$caps_percentage = length(regmatches(x, gregexpr("[A-Z]", x, perl=TRUE)))/nchar(x)}) #write a faster method
+    t1$caps_count = sapply(regmatches(as.vector(t1$description), gregexpr("[A-Z]", as.vector(t1$description), perl=TRUE)), length)
+    t1$caps_count = t1$caps_count/nchar(t1$description)
+    
     sentiment = get_nrc_sentiment(t1$description)
     t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
     t1$sentiment[is.na(t1$sentiment)] = mean(t1$sentiment[!is.na(t1$sentiment)])
@@ -484,6 +488,7 @@ get_manager_scores = function(t1, t2){
   t1 = unique(left_join(t1, check_expert_nbd, by = c("manager_id", "neighborhood")))
   # t1$price_ratio_manager_median = t1$price/t1$manager_median_price
   t1$manager_opportunity = (t1$price - t1$manager_median_price)/t1$manager_median_price
+  t1$manager_opportunity_pr = (t1$price_per_room - t1$manager_median_price)/t1$manager_median_price
   t1$manager_median_price = NULL
   t1$manager_id = NULL
 
@@ -495,6 +500,7 @@ get_manager_scores = function(t1, t2){
   # t2$manager_median_price[is.na(t2$manager_median_price)] = median(t2$manager_median_price, na.rm = TRUE) 
   # t2$price_ratio_manager_median = t2$price/t2$manager_median_price
   t2$manager_opportunity = (t2$price - t2$manager_median_price)/t2$manager_median_price
+  t2$manager_opportunity_pr = (t2$price_per_room - t2$manager_median_price)/t2$manager_median_price
   t2$manager_median_price = NULL
   
   t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE) #Leave it as NA and try!
@@ -562,6 +568,7 @@ get_nbd_scores = function(t1, t2){
   colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
   t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
   t1$nbd_opportunity = (t1$price - t1$median_price_nbd)/t1$median_price_nbd
+  t1$nbd_opportunity_pr = (t1$price_per_room - t1$median_price_nbd)/t1$median_price_nbd
   # t1$price_ratio_with_median = t1$price/t1$median_price_nbd
   t1$median_price_nbd = NULL
   
@@ -572,6 +579,7 @@ get_nbd_scores = function(t1, t2){
   # t2$price_ratio_with_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)]/t2$median_price_nbd[!is.na(t2$median_price_nbd)]
   # t2$price_ratio_with_median[is.na(t2$median_price_nbd)] = 1
   t2$nbd_opportunity = (t2$price - t2$median_price_nbd)/t2$median_price_nbd
+  t2$nbd_opportunity_pr = (t2$price_per_room - t2$median_price_nbd)/t2$median_price_nbd
   t2$median_price_nbd = NULL
   
   neighborhood_df = t1[, c("neighborhood", "interest_level")]  
@@ -675,16 +683,17 @@ get_renthop_score = function(t1, t2){
 
 get_hour_freq = function(t1, t2){
 
-  hour_df = rbind(t1[, c("listing_id", "created")], t2[, c("listing_id", "created")])
+  hour_df = rbind(t1[, c("listing_id", "created", "neighborhood")], t2[, c("listing_id", "created", "neighborhood")])
   
   hour_df$hour_serial = as.integer(difftime(hour_df$created, min(hour_df$created), units = "hours"))
   
-  hour_serial_df = as.data.frame(table(hour_df$hour_serial))
-  colnames(hour_serial_df) = c("hour_serial", "hour_freq")
+  # hour_serial_df = as.data.frame(table(hour_df$hour_serial))
+  hour_df$dummy = 1
+  hour_serial_df = aggregate(dummy ~ hour_serial + neighborhood, data = hour_df, FUN = sum)
+  colnames(hour_serial_df) = c("hour_serial", "neighborhood", "hour_freq")
 
-  hour_df = merge(hour_df, hour_serial_df, by = "hour_serial")
-  hour_df$hour_serial = NULL
-  
+  hour_df = merge(hour_df, hour_serial_df, by = c("neighborhood", "hour_serial"))
+
   t1 = merge(t1, hour_df[, c("listing_id", "hour_freq")], by = "listing_id")
   t2 = merge(t2, hour_df[, c("listing_id", "hour_freq")], by = "listing_id")
   
@@ -695,17 +704,16 @@ get_time_scores = function(t1, t2){
 
   min_created = min(min(t1$created), min(t2$created))
   
-  t1$hour_serial = as.integer(difftime(t1$created, min_created, units = "hours"))
-  t2$hour_serial = as.integer(difftime(t2$created, min_created, units = "hours"))
+  t1$hour_serial = as.integer(difftime(t1$created, min_created, units = "days"))
+  t2$hour_serial = as.integer(difftime(t2$created, min_created, units = "days"))
   
   time_nbd_df = rbind(t1[, c("listing_id", "created", "neighborhood", "bedrooms", "price", "hour_serial")], t2[, c("listing_id", "created",  "neighborhood", "bedrooms", "price", "hour_serial")])
-  # time_nbd_df$hour_serial = as.integer(difftime(time_nbd_df$created, min(time_nbd_df$created), units = "hours"))
+
+  hour_median_price = aggregate(price ~ neighborhood + bedrooms + hour_serial, data = time_nbd_df, FUN = median)
+  colnames(hour_median_price)[colnames(hour_median_price) == "price"] = c("hour_median_price")
   
-  time_nbd_df$hour_median_price = aggregate(price ~ neighborhood + bedrooms + hour_serial, data = time_nbd_df, FUN = median)
-  time_nbd_df$price = NULL
-  
-  t1 = merge(t1, time_nbd_df, by = c("neighborhood", "bedrooms", "hour_serial"))
-  t2 = merge(t2, time_nbd_df, by = c("neighborhood", "bedrooms", "hour_serial"))
+  t1 = merge(t1, hour_median_price, by = c("neighborhood", "bedrooms", "hour_serial"))
+  t2 = merge(t2, hour_median_price, by = c("neighborhood", "bedrooms", "hour_serial"))
   
   t1$hour_opportunity = (t1$price - t1$hour_median_price)/t1$hour_median_price
   t1$hour_median_price = NULL
@@ -732,21 +740,21 @@ validate_gbm = function(t1){
   # t1_train = building_res[[1]]
   # t1_test = building_res[[2]]
 
-  time_res = get_time_scores(t1_train, t1_test)
-  t1_train = time_res[[1]]
-  t1_test = time_res[[2]]
+  # time_res = get_time_scores(t1_train, t1_test)
+  # t1_train = time_res[[1]]
+  # t1_test = time_res[[2]]
   
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
   t1_test = manager_res[[2]]
   
-  nbd_res = get_nbd_scores(t1_train, t1_test)
-  t1_train = nbd_res[[1]]
-  t1_test = nbd_res[[2]]
-
   hour_res = get_hour_freq(t1_train, t1_test)
   t1_train = hour_res[[1]]
   t1_test = hour_res[[2]]
+  
+  nbd_res = get_nbd_scores(t1_train, t1_test)
+  t1_train = nbd_res[[1]]
+  t1_test = nbd_res[[2]]
   
   # renthop_res = get_renthop_score(t1_train, t1_test)
   # t1_train = renthop_res[[1]]
