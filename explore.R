@@ -10,7 +10,7 @@ library(stringr)
 require(dplyr)
 library(MLmetrics)
 library(plyr)
-#library(xgboost)
+library(xgboost)
 library(ggmap)
 library(syuzhet)
 library(geosphere)
@@ -377,6 +377,8 @@ generate_df = function(df, train_flag){
     # t1$V8 = grepl("private", tolower(df$features))
     # t1$V9 = grepl("terrace", tolower(df$features))
     # t1$V10 = grepl("yoga", tolower(df$features))
+
+    t1$town = as.factor(t1$town)
     
     t1$price = log(t1$price)
     t1$price_per_room = log(t1$price_per_room)
@@ -866,7 +868,7 @@ validate_gbm = function(t1){
 
 validate_xgb = function(train_xgb, train_y){
   set.seed(101) 
-  t1$building_id = NULL
+  train_xgb$building_id = NULL
   
   sample <- sample.int(nrow(train_xgb), floor(.75*nrow(train_xgb)), replace = F)
   train_xgb_train <- train_xgb[sample, ]
@@ -878,14 +880,22 @@ validate_xgb = function(train_xgb, train_y){
   # building_res = get_building_scores(train_xgb_train, train_xgb_val)
   # train_xgb_train = building_res[[1]]
   # train_xgb_val = building_res[[2]]
-  
-  nbd_res = get_nbd_scores(train_xgb_train, train_xgb_val)
-  train_xgb_train = nbd_res[[1]]
-  train_xgb_val = nbd_res[[2]]
+
+  # nbd_manager_res = get_specialized_mangers(train_xgb_train, train_xgb_val)
+  # train_xgb_train = nbd_manager_res[[1]]
+  # train_xgb_val = nbd_manager_res[[2]]
   
   manager_res = get_manager_scores(train_xgb_train, train_xgb_val)
   train_xgb_train = manager_res[[1]]
   train_xgb_val = manager_res[[2]]
+  
+  hour_res = get_hour_freq(train_xgb_train, train_xgb_val)
+  train_xgb_train = hour_res[[1]]
+  train_xgb_val = hour_res[[2]]
+  
+  nbd_res = get_nbd_scores(train_xgb_train, train_xgb_val)
+  train_xgb_train = nbd_res[[1]]
+  train_xgb_val = nbd_res[[2]]
   
   train_y_train = train_y[1:nrow(train_xgb_train)]
   
@@ -894,6 +904,9 @@ validate_xgb = function(train_xgb, train_y){
   train_y_val[train_y_val == 1] = "medium"
   train_y_val[train_y_val == 2] = "high"
   train_y_val = as.factor(train_y_val)
+  
+  train_xgb_train$created = NULL
+  train_xgb_val$created = NULL
   
   train_xgb_train = xgb(train_xgb_train, 1)
   train_xgb_val = xgb(train_xgb_val, 1)
@@ -961,36 +974,70 @@ get_train_y = function(t1){
 
 run_xgb = function(train_xgb, train_y, test_xgb){
   
-  train_xgb$listing_id = NULL
+  # model = xgboost(data = as.matrix(train_xgb), 
+  #                 label = train_y,
+  #                 eta = 0.1,
+  #                 gamma = 1,
+  #                 max_depth = 4, 
+  #                 nround=3000, 
+  #                 subsample = 0.7,
+  #                 colsample_bytree = 0.7,
+  #                 seed = 100,
+  #                 eval_metric = "mlogloss",
+  #                 objective = "multi:softprob",
+  #                 num_class = 3,
+  #                 missing = NaN,
+  #                 silent = 1)
+  # 
+  # # library(Ckmeans.1d.dp)
+  # # names <- dimnames(data.matrix(train_xgb[,-1]))[[2]]
+  # # importance_matrix = xgb.importance(names, model = model)
+  # # xgb.plot.importance(importance_matrix[1:50,])
+  # 
+  # pred = predict(model,  as.matrix(test_xgb), missing=NaN)
+  # 
+  # pred_matrix = matrix(pred, nrow = nrow(test_xgb), byrow = TRUE)
+  # 
+  # pred_submission = cbind(test_xgb$listing_id, pred_matrix)
+  # colnames(pred_submission) = c("listing_id", "low", "medium", "high")
+  # 
+  # pred_df = as.data.frame(pred_submission)
   
-  model = xgboost(data = as.matrix(train_xgb), 
-                  label = train_y,
-                  eta = 0.1,
-                  gamma = 1,
-                  max_depth = 6, 
-                  nround=10000, 
-                  subsample = 1,
-                  colsample_bytree = 0.7,
-                  seed = 100,
-                  eval_metric = "mlogloss",
-                  objective = "multi:softprob",
-                  num_class = 3,
-                  missing = NaN,
-                  silent = 1)
   
-  # library(Ckmeans.1d.dp)
-  # names <- dimnames(data.matrix(train_xgb[,-1]))[[2]]
-  # importance_matrix = xgb.importance(names, model = model)
-  # xgb.plot.importance(importance_matrix[1:50,])
+  xgb_params = list(
+    booster="gbtree",
+    nthread=13,
+    colsample_bytree= 0.5,
+    subsample = 0.7,
+    eta = 0.01,
+    objective= 'multi:softprob',
+    max_depth= 4,
+    min_child_weight= 1,
+    eval_metric= "mlogloss",
+    num_class = 3,
+    seed = 100
+  )
+
   
-  pred = predict(model,  as.matrix(test_xgb), missing=NaN)
+  train_xgb_train[is.na(train_xgb_train)] = 0
+  train_xgb_val[is.na(train_xgb_val)] = 0
+
+  # t1_sparse <- Matrix(as.matrix(train_xgb_train), sparse=TRUE) #Necessary?
+  # s1_sparse <- Matrix(as.matrix(train_xgb_val), sparse=TRUE)
   
-  pred_matrix = matrix(pred, nrow = nrow(test_xgb), byrow = TRUE)
+  dtrain = xgb.DMatrix(as.matrix(train_xgb_train), label=train_y_train)
+  dval = xgb.DMatrix(as.matrix(train_xgb_val), label=train_y_val)
   
-  pred_submission = cbind(test_xgb$listing_id, pred_matrix)
-  colnames(pred_submission) = c("listing_id", "low", "medium", "high")
+  #perform training
+  gbdt = xgb.train(params = xgb_params,
+                   data = dtrain,
+                   nrounds =2000,
+                   watchlist = list(train = dtrain, val=dval),
+                   print_every_n = 25,
+                   early_stopping_rounds=50)
   
-  pred_df = as.data.frame(pred_submission)
+  pred_df =  (as.data.frame(matrix(predict(gbdt,dtest), nrow=dim(test), byrow=TRUE)))
+  
   return(pred_df)
   
 }
