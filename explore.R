@@ -220,7 +220,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 4000
+                ,ntrees = 1000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -445,7 +445,13 @@ get_manager_scores = function(t1, t2){
 
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
   manager_agg$manager_count = rowSums(manager_agg[,c(2:4)])
-
+  
+  manager_df$interest_level = NULL
+  manager_df$interest_levelhigh = NULL
+  manager_df$interest_levellow = NULL
+  manager_df$interest_levelmedium = NULL
+  
+  manager_df = rbind(manager_df, t2[, c("manager_id", "price", "bedrooms", "neighborhood")])
   manager_price = aggregate(price ~ manager_id + bedrooms, data = manager_df, FUN = median)
   colnames(manager_price) = c("manager_id", "bedrooms", "manager_median_price")
 
@@ -518,7 +524,6 @@ get_manager_scores = function(t1, t2){
 
   return(list(t1, t2))
  
-   
 }
 
 get_building_scores = function(t1, t2){
@@ -617,23 +622,23 @@ get_town_scores = function(t1, t2){
 
 get_nbd_scores = function(t1, t2){
 
-  nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = t1, FUN = median)
+  nbd_price = rbind(t1[, c("neighborhood", "bedrooms", "price")], t2[, c("neighborhood", "bedrooms", "price")])
+  
+  nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = nbd_price, FUN = median)
   colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
+  
   t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
   t1$nbd_opportunity = (t1$price - t1$median_price_nbd)/t1$median_price_nbd
-  # t1$nbd_opportunity_pr = (t1$price_per_room - t1$median_price_nbd)/t1$median_price_nbd
-  # t1$price_ratio_with_median = t1$price/t1$median_price_nbd
   t1$median_price_nbd = NULL
   
   t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
+  t2$nbd_opportunity = (t2$price - t2$median_price_nbd)/t2$median_price_nbd
+  t2$median_price_nbd = NULL
+  
   # t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
   # t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
-
   # t2$price_ratio_with_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)]/t2$median_price_nbd[!is.na(t2$median_price_nbd)]
   # t2$price_ratio_with_median[is.na(t2$median_price_nbd)] = 1
-  t2$nbd_opportunity = (t2$price - t2$median_price_nbd)/t2$median_price_nbd
-  # t2$nbd_opportunity_pr = (t2$price_per_room - t2$median_price_nbd)/t2$median_price_nbd
-  t2$median_price_nbd = NULL
   
   neighborhood_df = t1[, c("neighborhood", "interest_level")]  
   neighborhood_df = cbind(neighborhood_df, model.matrix( ~ interest_level - 1, data = neighborhood_df))
@@ -794,7 +799,7 @@ get_time_scores = function(t1, t2){
   return (list(t1, t2))
 }
 
-get_specialized_mangers = function(t1, t2){s
+get_specialized_mangers = function(t1, t2){
   
   nbd_manager = rbind(t1[, c("listing_id", "neighborhood", "manager_id")], t2[, c("listing_id", "neighborhood", "manager_id")])
   nbd_manager$dummy = 1
