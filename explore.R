@@ -220,14 +220,14 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 1000
+                ,ntrees = 2000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
-                ,max_depth = 6
+                ,max_depth = 
                 ,min_rows = 10
                 ,sample_rate = 0.9
                 ,score_tree_interval = 10
-                ,col_sample_rate = 0.7
+                ,col_sample_rate = 0.9
                 ,stopping_rounds = 5
                 ,stopping_metric = "logloss"
                 ,stopping_tolerance = 1e-4
@@ -627,7 +627,7 @@ get_nbd_scores = function(t1, t2){
   nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = nbd_price, FUN = median)
   colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
   
-  t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
+  t1 = left_join(t1, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
   t1$nbd_opportunity = (t1$price - t1$median_price_nbd)/t1$median_price_nbd
   t1$median_price_nbd = NULL
   
@@ -862,6 +862,16 @@ validate_gbm = function(t1){
   # t1_train = renthop_res[[1]]
   # t1_test = renthop_res[[2]]
 
+  # t1_train$town = NULL
+  # t1_train$latitude = NULL
+  # t1_train$longitude = NULL
+  # t1_train$street_number_provided = NULL
+  # t1_train$phone_number_provided = NULL
+  # t1_train$caps_count = NULL
+  # t1_train$bang_count = NULL
+  # t1_train$last_active = NULL
+  # t1_train$featured = NULL
+  
   res_val = gbm_h2o(t1_train, t1_test)
 
   print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
