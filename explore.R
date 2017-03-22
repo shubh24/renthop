@@ -581,40 +581,38 @@ get_building_scores = function(t1, t2){
 
 get_street_scores = function(t1, t2){
   
-  street_price = rbind(t1[, c("street_address", "bedrooms", "price")], t2[, c("street_address", "bedrooms", "price")])
+  street_price = rbind(t1[, c("street_int_id", "bedrooms", "price")], t2[, c("street_int_id", "bedrooms", "price")])
   
-  street_agg = aggregate(price ~ street_address + bedrooms, data = t1, FUN = median)
+  street_agg = aggregate(price ~ street_int_id + bedrooms, data = t1, FUN = median)
   colnames(street_agg)[colnames(street_agg) == "price"] = "median_price_street"
 
-  t1 = merge(t1, street_agg, by = c("street_address", "bedrooms"))
+  t1 = merge(t1, street_agg, by = c("street_int_id", "bedrooms"))
   t1$street_opportunity = (t1$price - t1$median_price_street)/t1$median_price_street
   t1$median_price_street = NULL
   
-  t2 = left_join(t2, as.data.table(street_agg), by = c("street_address", "bedrooms"))
+  t2 = left_join(t2, as.data.table(street_agg), by = c("street_int_id", "bedrooms"))
 
   t2$street_opportunity = (t2$price - t2$median_price_street)/t2$median_price_street
   t2$median_price_street = NULL
   
-  # town_df = t1[, c("town", "interest_level")]  
-  # town_df = cbind(town_df, model.matrix( ~ interest_level - 1, data = town_df))
-  # town_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ town, data = town_df, FUN = sum)
-  # 
-  # town_agg$count = rowSums(town_agg[,c(2:4)])
-  # town_agg[, c(2:4)] = town_agg[, c(2:4)]/town_agg$count
-  # town_agg$town_score = 2*town_agg$interest_levelhigh + town_agg$interest_levelmedium 
-  # town_agg$town_score[town_agg$count < 20] = median(town_agg$town_score[town_agg$count >= 20])
-  # 
-  # town_agg$interest_levellow = NULL
-  # town_agg$interest_levelhigh = NULL
-  # town_agg$interest_levelmedium = NULL
-  # town_agg$count = NULL
-  # 
-  # t1 = merge(t1, town_agg, by = "town")
-  # t1$town = NULL
-  # 
-  # t2 = left_join(t2, as.data.table(town_agg), by = "town")
-  # # t2$town_score[is.na(t2$town_score)] = median(t2$town_score, na.rm = TRUE)
-  # t2$town = NULL
+  street_df = t1[, c("street_int_id", "interest_level")]
+  street_df = cbind(street_df, model.matrix( ~ interest_level - 1, data = street_df))
+  street_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ street_int_id, data = street_df, FUN = sum)
+
+  street_agg$count = rowSums(street_agg[,c(2:4)])
+  street_agg[, c(2:4)] = street_agg[, c(2:4)]/street_agg$count
+  street_agg$street_score = 2*street_agg$interest_levelhigh + street_agg$interest_levelmedium
+  street_agg$street_score[street_agg$count < 10] = median(street_agg$street_score[street_agg$count >= 10])
+
+  street_agg$interest_levellow = NULL
+  street_agg$interest_levelhigh = NULL
+  street_agg$interest_levelmedium = NULL
+  street_agg$count = NULL
+  
+  t1 = merge(t1, street_agg, by = "street_int_id")
+  
+  t2 = left_join(t2, as.data.table(street_agg), by = "street_int_id")
+  # t2$street_score[is.na(t2$street_score)] = median(t2$street_score, na.rm = TRUE)
   
   return(list(t1, t2))
 }
@@ -836,7 +834,7 @@ validate_gbm = function(t1){
   
   t1$building_id = NULL
   
-  t1$street_address = as.integer(as.factor(t1$street_address))
+  t1$street_int_id = as.integer(as.factor(t1$street_address))
   t1$manager_int_id = as.integer(as.factor(t1$manager_id))
   
   sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
@@ -871,7 +869,7 @@ validate_gbm = function(t1){
   street_res = get_street_scores(t1_train, t1_test)
   t1_train = street_res[[1]]
   t1_test = street_res[[2]]
-  
+
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
   t1_test = manager_res[[2]]
@@ -1134,8 +1132,8 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 #Validation (gbm)
 gbm_val = validate_gbm(t1)
 
-# t1$street_address = as.character(unlist(df$street_address))
-# t2$street_address = as.character(unlist(test$street_address))
+t1$street_address = as.character(unlist(df$street_address))
+t2$street_address = as.character(unlist(test$street_address))
 
 street_address_df = rbind(t1[, c("listing_id", "street_address")], t2[, c("listing_id", "street_address")])
 street_address_df$street_id_int = as.integer(as.factor(street_address_df$street_address))
