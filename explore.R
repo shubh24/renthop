@@ -223,7 +223,7 @@ gbm_h2o = function(t1, t2){
                 ,ntrees = 2000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
-                ,max_depth = 
+                ,max_depth = 7
                 ,min_rows = 10
                 ,sample_rate = 0.9
                 ,score_tree_interval = 10
@@ -246,7 +246,7 @@ generate_df = function(df, train_flag){
                      ,created=as.POSIXct(unlist(df$created))
                      ,n_photos = as.numeric(sapply(df$photos, length))
                      ,n_words = sapply(strsplit(as.character(df$description), "\\s+"), length)
-                     ,n_description = log(as.numeric(sapply(df$description, nchar)))
+                     ,n_description = as.numeric(sapply(df$description, nchar))
                      ,n_features = as.numeric(sapply(df$features, length))
                      ,description=unlist(df$description) # parse errors
                      ,display_address=as.character(unlist(df$display_address)) # parse errors
@@ -285,10 +285,9 @@ generate_df = function(df, train_flag){
       t1$relevant_features = rowSums(strdetect_df_test)/t1$n_features
     }
     
-    t1$caps_count = sapply(regmatches(as.vector(t1$description), gregexpr("[A-Z]", as.vector(t1$description), perl=TRUE)), length)
-    t1$caps_count = t1$caps_count/nchar(t1$description)
-
-    t1$bang_count = sapply(regmatches(as.vector(t1$description), gregexpr("!", as.vector(t1$description), perl=TRUE)), length)
+    # t1$caps_count = sapply(regmatches(as.vector(t1$description), gregexpr("[A-Z]", as.vector(t1$description), perl=TRUE)), length)
+    # t1$caps_count = t1$caps_count/nchar(t1$description)
+    # t1$bang_count = sapply(regmatches(as.vector(t1$description), gregexpr("!", as.vector(t1$description), perl=TRUE)), length)
     
     sentiment = get_nrc_sentiment(t1$description)
     t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
@@ -296,6 +295,9 @@ generate_df = function(df, train_flag){
     t1$description = NULL
     
     t1$price_per_room = t1$price/(t1$bedrooms + t1$bathrooms)     
+    t1$price_per_bedroom = t1$price/t1$bedrooms
+    t1$price_per_bathroom = t1$price/t1$bathrooms
+    t1$rooms = t1$bedrooms + t1$bathrooms
     
     # t1$ends_with_95 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "95")
     # t1$ends_with_99 = as.factor(substr(as.character(t1$price), nchar(as.character(t1$price))-1, nchar(as.character(t1$price))) == "99")
@@ -312,7 +314,6 @@ generate_df = function(df, train_flag){
       t1$latitude[as.character(t1$listing_id) == as.character(outliers_ny$listing_id[i])] = as.numeric(coord["lat"])
       t1$longitude[as.character(t1$listing_id) == outliers_ny$listing_id[i]] = as.numeric(coord["lon"])
     }
-    t1$street_address = NULL
     
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
     t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
@@ -382,7 +383,9 @@ generate_df = function(df, train_flag){
     
     t1$price = log(t1$price)
     t1$price_per_room = log(t1$price_per_room)
-
+    t1$price_per_bedroom = log(t1$price_per_bedroom)
+    t1$price_per_bathroom = log(t1$price_per_bathroom)
+    
     return (t1)
 }
 
@@ -439,7 +442,7 @@ get_last_active = function(t1){
 }
 
 get_manager_scores = function(t1, t2){
-  
+
   manager_df = t1[, c("manager_id", "interest_level", "price", "bedrooms", "neighborhood")]
   manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
 
@@ -576,46 +579,42 @@ get_building_scores = function(t1, t2){
   return(list(t1,t2))
 }
 
-get_town_scores = function(t1, t2){
+get_street_scores = function(t1, t2){
   
-  town_agg = aggregate(price ~ town + bedrooms, data = t1, FUN = median)
-  colnames(town_agg)[colnames(town_agg) == "price"] = "median_price_town"
-  t1 = merge(t1, town_agg, by = c("town", "bedrooms"))
-  t1$town_opportunity = (t1$price - t1$median_price_town)/t1$median_price_town
-  t1$town_opportunity_pr = (t1$price_per_room - t1$median_price_town)/t1$median_price_town
-  # t1$price_ratio_with_median = t1$price/t1$median_price_town
-  t1$median_price_town = NULL
+  street_price = rbind(t1[, c("street_address", "bedrooms", "price")], t2[, c("street_address", "bedrooms", "price")])
   
-  t2 = left_join(t2, as.data.table(town_agg), by = c("town", "bedrooms"))
-  # t2$price_diff_from_median[!is.na(t2$median_price_town)] = t2$price[!is.na(t2$median_price_town)] - t2$median_price_town[!is.na(t2$median_price_town)]
-  # t2$price_diff_from_median[is.na(t2$median_price_town)] = 0
+  street_agg = aggregate(price ~ street_address + bedrooms, data = t1, FUN = median)
+  colnames(street_agg)[colnames(street_agg) == "price"] = "median_price_street"
+
+  t1 = merge(t1, street_agg, by = c("street_address", "bedrooms"))
+  t1$street_opportunity = (t1$price - t1$median_price_street)/t1$median_price_street
+  t1$median_price_street = NULL
   
-  # t2$price_ratio_with_median[!is.na(t2$median_price_town)] = t2$price[!is.na(t2$median_price_town)]/t2$median_price_town[!is.na(t2$median_price_town)]
-  # t2$price_ratio_with_median[is.na(t2$median_price_town)] = 1
-  t2$town_opportunity = (t2$price - t2$median_price_town)/t2$median_price_town
-  t2$town_opportunity_pr = (t2$price_per_room - t2$median_price_town)/t2$median_price_town
-  t2$median_price_town = NULL
+  t2 = left_join(t2, as.data.table(street_agg), by = c("street_address", "bedrooms"))
+
+  t2$street_opportunity = (t2$price - t2$median_price_street)/t2$median_price_street
+  t2$median_price_street = NULL
   
-  town_df = t1[, c("town", "interest_level")]  
-  town_df = cbind(town_df, model.matrix( ~ interest_level - 1, data = town_df))
-  town_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ town, data = town_df, FUN = sum)
-  
-  town_agg$count = rowSums(town_agg[,c(2:4)])
-  town_agg[, c(2:4)] = town_agg[, c(2:4)]/town_agg$count
-  town_agg$town_score = 2*town_agg$interest_levelhigh + town_agg$interest_levelmedium 
-  town_agg$town_score[town_agg$count < 20] = median(town_agg$town_score[town_agg$count >= 20])
-  
-  town_agg$interest_levellow = NULL
-  town_agg$interest_levelhigh = NULL
-  town_agg$interest_levelmedium = NULL
-  town_agg$count = NULL
-  
-  t1 = merge(t1, town_agg, by = "town")
-  t1$town = NULL
-  
-  t2 = left_join(t2, as.data.table(town_agg), by = "town")
-  # t2$town_score[is.na(t2$town_score)] = median(t2$town_score, na.rm = TRUE)
-  t2$town = NULL
+  # town_df = t1[, c("town", "interest_level")]  
+  # town_df = cbind(town_df, model.matrix( ~ interest_level - 1, data = town_df))
+  # town_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ town, data = town_df, FUN = sum)
+  # 
+  # town_agg$count = rowSums(town_agg[,c(2:4)])
+  # town_agg[, c(2:4)] = town_agg[, c(2:4)]/town_agg$count
+  # town_agg$town_score = 2*town_agg$interest_levelhigh + town_agg$interest_levelmedium 
+  # town_agg$town_score[town_agg$count < 20] = median(town_agg$town_score[town_agg$count >= 20])
+  # 
+  # town_agg$interest_levellow = NULL
+  # town_agg$interest_levelhigh = NULL
+  # town_agg$interest_levelmedium = NULL
+  # town_agg$count = NULL
+  # 
+  # t1 = merge(t1, town_agg, by = "town")
+  # t1$town = NULL
+  # 
+  # t2 = left_join(t2, as.data.table(town_agg), by = "town")
+  # # t2$town_score[is.na(t2$town_score)] = median(t2$town_score, na.rm = TRUE)
+  # t2$town = NULL
   
   return(list(t1, t2))
 }
@@ -813,9 +812,32 @@ get_specialized_mangers = function(t1, t2){
   return (list(t1, t2))  
 }
 
+get_bedroom_opportunity = function(t1, t2){
+  
+  bedroom_price = rbind(t1[, c("bedrooms", "price")], t2[, c("bedrooms", "price")])
+  
+  bedroom_agg = aggregate(price ~ bedrooms, data = bedroom_price, FUN = median)
+  colnames(bedroom_agg)[colnames(bedroom_agg) == "price"] = "median_price_bedroom"
+  
+  t1 = merge(t1, bedroom_agg, by = c("bedrooms"))
+  t1$bedroom_opportunity = (t1$price - t1$median_price_bedroom)/t1$median_price_bedroom
+  t1$median_price_bedroom = NULL
+  
+  t2 = left_join(t2, as.data.table(bedroom_agg), by = c("bedrooms"))
+
+  t2$bedroom_opportunity = (t2$price - t2$median_price_bedroom)/t2$median_price_bedroom
+  t2$median_price_bedroom = NULL
+    
+  return (list(t1, t2))
+}
+
 validate_gbm = function(t1){
   set.seed(101) 
+  
   t1$building_id = NULL
+  
+  t1$street_address = as.integer(as.factor(t1$street_address))
+  t1$manager_int_id = as.integer(as.factor(t1$manager_id))
   
   sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
   t1_train <- t1[sample, ]
@@ -845,6 +867,10 @@ validate_gbm = function(t1){
   # bulk_res = get_bulk_listing(t1_train, t1_test)
   # t1_train = bulk_res[[1]]
   # t1_test = bulk_res[[2]]
+
+  street_res = get_street_scores(t1_train, t1_test)
+  t1_train = street_res[[1]]
+  t1_test = street_res[[2]]
   
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
@@ -858,22 +884,16 @@ validate_gbm = function(t1){
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
   
+  bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
+  t1_train = bedroom_res[[1]]
+  t1_test = bedroom_res[[2]]
+  
   # renthop_res = get_renthop_score(t1_train, t1_test)
   # t1_train = renthop_res[[1]]
   # t1_test = renthop_res[[2]]
 
-  # t1_train$town = NULL
-  # t1_train$latitude = NULL
-  # t1_train$longitude = NULL
-  # t1_train$street_number_provided = NULL
-  # t1_train$phone_number_provided = NULL
-  # t1_train$caps_count = NULL
-  # t1_train$bang_count = NULL
-  # t1_train$last_active = NULL
-  # t1_train$featured = NULL
-  
   res_val = gbm_h2o(t1_train, t1_test)
-
+  
   print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
   print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
 
@@ -1114,6 +1134,21 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 #Validation (gbm)
 gbm_val = validate_gbm(t1)
 
+# t1$street_address = as.character(unlist(df$street_address))
+# t2$street_address = as.character(unlist(test$street_address))
+
+street_address_df = rbind(t1[, c("listing_id", "street_address")], t2[, c("listing_id", "street_address")])
+street_address_df$street_id_int = as.integer(as.factor(street_address_df$street_address))
+t1 = left_join(t1, street_address_df[, c("listing_id", "street_id_int")], by = c("listing_id"))
+t2 = left_join(t2, street_address_df[, c("listing_id", "street_id_int")], by = c("listing_id"))
+t1$street_address = NULL
+t2$street_address = NULL
+
+manager_int_df = rbind(t1[, c("listing_id", "manager_id")], t2[, c("listing_id", "manager_id")])
+manager_int_df$manager_int_id = as.integer(as.factor(manager_int_df$manager_id))
+t1 = left_join(t1, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+t2 = left_join(t2, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+
 t1 = get_last_active(t1)
 t2 = get_last_active(t2)
 
@@ -1136,9 +1171,13 @@ nbd_res = get_nbd_scores(t1, t2)
 t1 = nbd_res[[1]]
 t2 = nbd_res[[2]]
 
+bedroom_res = get_bedroom_opportunity(t1, t2)
+t1 = bedroom_res[[1]]
+t2 = bedroom_res[[2]]
+
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_25.csv", row.names = FALSE)
+write.csv(pred, "gbm_26.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
