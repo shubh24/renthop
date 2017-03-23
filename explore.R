@@ -445,9 +445,13 @@ get_manager_scores = function(t1, t2){
   manager_df = t1[, c("manager_id", "interest_level", "price", "bedrooms", "neighborhood")]
   manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
 
+  global_high = sum(manager_df$interest_levelhigh)/nrow(t1)
+  global_medium = sum(manager_df$interest_levelmedium)/nrow(t1)
+  
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
   manager_agg$manager_count = rowSums(manager_agg[,c(2:4)])
-  
+  manager_agg$lambda = 1/(1+exp((10 - manager_agg$manager_count)*2)) 
+    
   manager_df$interest_level = NULL
   manager_df$interest_levelhigh = NULL
   manager_df$interest_levellow = NULL
@@ -493,6 +497,10 @@ get_manager_scores = function(t1, t2){
 
   manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$manager_count
 
+  manager_agg$high_score = manager_agg$lambda*manager_agg$interest_levelhigh + (1-manager_agg$lambda)*global_high
+  # manager_agg$medium_score = manager_agg$lambda*manager_agg$interest_levelmedium + (1-manager_agg$lambda)*global_medium
+  manager_agg$lambda = NULL
+  
   manager_agg$manager_score = 2^(manager_agg$interest_levelhigh + manager_agg$interest_levelmedium)
   manager_agg$manager_score[manager_agg$manager_count < 10] = median(manager_agg$manager_score[manager_agg$manager_count >= 10])
 
@@ -521,6 +529,8 @@ get_manager_scores = function(t1, t2){
   t2$manager_median_price = NULL
   
   t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE) #Leave it as NA and try!
+  t2$high_score[is.na(t2$high_score)] = global_high
+  # t2$medium_score[is.na(t2$medium_score)] = median(t2$medium_score, na.rm = TRUE) #Leave it as NA and try!
   
   t2$manager_id = NULL
 
@@ -1197,7 +1207,7 @@ t2 = bedroom_res[[2]]
 
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_26.csv", row.names = FALSE)
+write.csv(pred, "gbm_27.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
