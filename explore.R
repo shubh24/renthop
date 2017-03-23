@@ -220,7 +220,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 2000
+                ,ntrees = 1200
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 7
@@ -249,7 +249,7 @@ generate_df = function(df, train_flag){
                      ,n_description = as.numeric(sapply(df$description, nchar))
                      ,n_features = as.numeric(sapply(df$features, length))
                      ,description=unlist(df$description) # parse errors
-                     ,display_address=as.character(unlist(df$display_address)) # parse errors
+                     ,display_address=as.character(unlist(tolower(df$display_address))) # parse errors
                      ,latitude=unlist(df$latitude)
                      ,longitude=unlist(df$longitude)
                      ,distance_to_city=mapply(function(lon,lat) distm (c(lon, lat), c(ny_lon, ny_lat), fun = distHaversine)/1000,
@@ -314,6 +314,7 @@ generate_df = function(df, train_flag){
       t1$latitude[as.character(t1$listing_id) == as.character(outliers_ny$listing_id[i])] = as.numeric(coord["lat"])
       t1$longitude[as.character(t1$listing_id) == outliers_ny$listing_id[i]] = as.numeric(coord["lon"])
     }
+    t1$street_address = NULL
     
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
     t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
@@ -329,8 +330,6 @@ generate_df = function(df, train_flag){
     # t1$west = as.factor(str_detect(tolower(t1$display_address), "west"))
     # t1$north = as.factor(str_detect(tolower(t1$display_address), "north"))
     # t1$south = as.factor(str_detect(tolower(t1$display_address), "south"))
-    
-    t1$display_address = NULL
     
     t1$zero_building_id = as.factor(t1$building_id == 0)
     # buildings = as.data.frame(table(t1$building_id))
@@ -583,7 +582,7 @@ get_street_scores = function(t1, t2){
   
   street_price = rbind(t1[, c("street_int_id", "bedrooms", "price")], t2[, c("street_int_id", "bedrooms", "price")])
   
-  street_agg = aggregate(price ~ street_int_id + bedrooms, data = t1, FUN = median)
+  street_agg = aggregate(price ~ street_int_id + bedrooms, data = street_price, FUN = median)
   colnames(street_agg)[colnames(street_agg) == "price"] = "median_price_street"
 
   t1 = merge(t1, street_agg, by = c("street_int_id", "bedrooms"))
@@ -595,23 +594,23 @@ get_street_scores = function(t1, t2){
   t2$street_opportunity = (t2$price - t2$median_price_street)/t2$median_price_street
   t2$median_price_street = NULL
   
-  street_df = t1[, c("street_int_id", "interest_level")]
-  street_df = cbind(street_df, model.matrix( ~ interest_level - 1, data = street_df))
-  street_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ street_int_id, data = street_df, FUN = sum)
-
-  street_agg$count = rowSums(street_agg[,c(2:4)])
-  street_agg[, c(2:4)] = street_agg[, c(2:4)]/street_agg$count
-  street_agg$street_score = 2*street_agg$interest_levelhigh + street_agg$interest_levelmedium
-  street_agg$street_score[street_agg$count < 10] = median(street_agg$street_score[street_agg$count >= 10])
-
-  street_agg$interest_levellow = NULL
-  street_agg$interest_levelhigh = NULL
-  street_agg$interest_levelmedium = NULL
-  street_agg$count = NULL
-  
-  t1 = merge(t1, street_agg, by = "street_int_id")
-  
-  t2 = left_join(t2, as.data.table(street_agg), by = "street_int_id")
+  # street_df = t1[, c("street_int_id", "interest_level")]
+  # street_df = cbind(street_df, model.matrix( ~ interest_level - 1, data = street_df))
+  # street_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ street_int_id, data = street_df, FUN = sum)
+  # 
+  # street_agg$count = rowSums(street_agg[,c(2:4)])
+  # street_agg[, c(2:4)] = street_agg[, c(2:4)]/street_agg$count
+  # street_agg$street_score = 2*street_agg$interest_levelhigh + street_agg$interest_levelmedium
+  # street_agg$street_score[street_agg$count < 10] = median(street_agg$street_score[street_agg$count >= 10])
+  # 
+  # street_agg$interest_levellow = NULL
+  # street_agg$interest_levelhigh = NULL
+  # street_agg$interest_levelmedium = NULL
+  # street_agg$count = NULL
+  # 
+  # t1 = merge(t1, street_agg, by = "street_int_id")
+  # 
+  # t2 = left_join(t2, as.data.table(street_agg), by = "street_int_id")
   # t2$street_score[is.na(t2$street_score)] = median(t2$street_score, na.rm = TRUE)
   
   return(list(t1, t2))
@@ -812,16 +811,16 @@ get_specialized_mangers = function(t1, t2){
 
 get_bedroom_opportunity = function(t1, t2){
   
-  bedroom_price = rbind(t1[, c("bedrooms", "price")], t2[, c("bedrooms", "price")])
+  bedroom_price = rbind(t1[, c("bedrooms", "bathrooms", "price")], t2[, c("bedrooms", "bathrooms", "price")])
   
-  bedroom_agg = aggregate(price ~ bedrooms, data = bedroom_price, FUN = median)
+  bedroom_agg = aggregate(price ~ bedrooms + bathrooms, data = bedroom_price, FUN = median)
   colnames(bedroom_agg)[colnames(bedroom_agg) == "price"] = "median_price_bedroom"
   
-  t1 = merge(t1, bedroom_agg, by = c("bedrooms"))
+  t1 = merge(t1, bedroom_agg, by = c("bedrooms", "bathrooms"))
   t1$bedroom_opportunity = (t1$price - t1$median_price_bedroom)/t1$median_price_bedroom
   t1$median_price_bedroom = NULL
   
-  t2 = left_join(t2, as.data.table(bedroom_agg), by = c("bedrooms"))
+  t2 = left_join(t2, as.data.table(bedroom_agg), by = c("bedrooms", "bathrooms"))
 
   t2$bedroom_opportunity = (t2$price - t2$median_price_bedroom)/t2$median_price_bedroom
   t2$median_price_bedroom = NULL
@@ -833,13 +832,26 @@ validate_gbm = function(t1){
   set.seed(101) 
   
   t1$building_id = NULL
+
+  t1$street_int_id = as.integer(as.factor(t1$display_address))
   
-  t1$street_int_id = as.integer(as.factor(t1$street_address))
+  street_count_df = as.data.frame(table(as.factor(t1$street_int_id)))
+  colnames(street_count_df) = c("street_int_id", "street_count")
+  street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
+  t1 = merge(t1, street_count_df, by = "street_int_id")
+  t1$street_int_id = NULL
+  t1$display_address = NULL
+  
   t1$manager_int_id = as.integer(as.factor(t1$manager_id))
   
   sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
   t1_train <- t1[sample, ]
   t1_test <- t1[-sample, ]
+  
+  t1_train$display_address = NULL
+  t1_test$display_address = NULL
+  t1_train$street_int_id = NULL
+  t1_test$street_int_id = NULL
   
   # gbm_tuning(t1_train, t1_test)
   
@@ -866,10 +878,12 @@ validate_gbm = function(t1){
   # t1_train = bulk_res[[1]]
   # t1_test = bulk_res[[2]]
 
-  street_res = get_street_scores(t1_train, t1_test)
-  t1_train = street_res[[1]]
-  t1_test = street_res[[2]]
-
+  # street_res = get_street_scores(t1_train, t1_test)
+  # t1_train = street_res[[1]]
+  # t1_train$street_address = NULL
+  # t1_test = street_res[[2]]
+  # t1_test$street_address = NULL
+  
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
   t1_test = manager_res[[2]]
@@ -885,6 +899,7 @@ validate_gbm = function(t1){
   bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
   t1_train = bedroom_res[[1]]
   t1_test = bedroom_res[[2]]
+  
   
   # renthop_res = get_renthop_score(t1_train, t1_test)
   # t1_train = renthop_res[[1]]
@@ -1132,15 +1147,22 @@ write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 #Validation (gbm)
 gbm_val = validate_gbm(t1)
 
-t1$street_address = as.character(unlist(df$street_address))
-t2$street_address = as.character(unlist(test$street_address))
+street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
 
-street_address_df = rbind(t1[, c("listing_id", "street_address")], t2[, c("listing_id", "street_address")])
-street_address_df$street_id_int = as.integer(as.factor(street_address_df$street_address))
-t1 = left_join(t1, street_address_df[, c("listing_id", "street_id_int")], by = c("listing_id"))
-t2 = left_join(t2, street_address_df[, c("listing_id", "street_id_int")], by = c("listing_id"))
-t1$street_address = NULL
-t2$street_address = NULL
+street_address_df$street_int_id = as.integer(as.factor(street_address_df$display_address))
+street_count_df = as.data.frame(table(as.factor(street_address_df$street_int_id)))
+colnames(street_count_df) = c("street_int_id", "street_count")
+street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
+
+street_address_df = merge(street_address_df, street_count_df, by = "street_int_id")
+  
+t1 = merge(t1, street_address_df[, c("listing_id", "street_count")], by = "listing_id")
+t2 = merge(t2, street_address_df[, c("listing_id", "street_count")], by = "listing_id")
+
+t1$street_int_id = NULL
+t1$display_address = NULL
+t2$street_int_id = NULL
+t2$display_address = NULL
 
 manager_int_df = rbind(t1[, c("listing_id", "manager_id")], t2[, c("listing_id", "manager_id")])
 manager_int_df$manager_int_id = as.integer(as.factor(manager_int_df$manager_id))
