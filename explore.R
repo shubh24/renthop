@@ -220,7 +220,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 1200
+                ,ntrees = 1000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 7
@@ -445,8 +445,9 @@ get_manager_scores = function(t1, t2){
   manager_df = t1[, c("manager_id", "interest_level", "price", "bedrooms", "neighborhood")]
   manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
 
-  global_high = (2*sum(manager_df$interest_levelhigh) + sum(manager_df$interest_levelmedium))/nrow(t1)
-  # global_medium = sum(manager_df$interest_levelmedium)/nrow(t1)
+  global_high_medium = (sum(manager_df$interest_levelhigh) + sum(manager_df$interest_levelmedium))/nrow(t1)
+  global_medium = sum(manager_df$interest_levelmedium)/nrow(t1)
+  global_high = sum(manager_df$interest_levelhigh)/nrow(t1)
   
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
   manager_agg$manager_count = rowSums(manager_agg[,c(2:4)])
@@ -497,8 +498,9 @@ get_manager_scores = function(t1, t2){
 
   manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$manager_count
 
-  manager_agg$high_score = manager_agg$lambda*(2*manager_agg$interest_levelhigh+manager_agg$interest_levelmedium) + (1-manager_agg$lambda)*global_high
-  # manager_agg$medium_score = manager_agg$lambda*manager_agg$interest_levelmedium + (1-manager_agg$lambda)*global_medium
+  manager_agg$high_medium_score = manager_agg$lambda*(manager_agg$interest_levelhigh+manager_agg$interest_levelmedium) + (1-manager_agg$lambda)*global_high_medium
+  manager_agg$medium_score = manager_agg$lambda*manager_agg$interest_levelmedium + (1-manager_agg$lambda)*global_medium
+  manager_agg$high_score = manager_agg$lambda*manager_agg$interest_levelhigh + (1-manager_agg$lambda)*global_high
   manager_agg$lambda = NULL
   
   manager_agg$manager_score = 2^(manager_agg$interest_levelhigh + manager_agg$interest_levelmedium)
@@ -850,6 +852,28 @@ get_bedroom_opportunity = function(t1, t2){
   return (list(t1, t2))
 }
 
+get_listing_outliers = function(t1, t2){
+  t1$yday = yday(t1$created)
+  t2yday = yday(t2$created)
+  listing_df = rbind(t1[, c("listing_id", "yday")], t2[, c("listing_id", "yday")])
+  
+  listing_df$normal_limit = 0
+  for (i in 1:length(unique(listing_df$yday))){
+    yday = unique(listing_df$yday)[i]
+    
+    normal_limit = as.numeric(quantile(listing_df$listing_id[listing_df$yday == yday], 0.9))
+    
+    listing_df$normal_limit[listing_df$yday == yday] = normal_limit
+  }
+  
+  listing_df$outlier = as.factor(listing_df$listing_id > listing_df$normal_limit)
+  
+  t1 = merge(t1, listing_df[, c("listing_id", "outlier")], by = "listing_id")
+  t2 = merge(t2, listing_df[, c("listing_id", "outlier")], by = "listing_id")
+ 
+  return (list(t1, t2)) 
+}
+
 validate_gbm = function(t1){
   set.seed(101) 
   
@@ -879,8 +903,8 @@ validate_gbm = function(t1){
   
   # gbm_tuning(t1_train, t1_test)
   
-  t1_train = get_last_active(t1_train)
-  t1_test = get_last_active(t1_test)
+  # t1_train = get_last_active(t1_train)
+  # t1_test = get_last_active(t1_test)
 
   # building_res = get_building_scores(t1_train, t1_test)
   # t1_train = building_res[[1]]
@@ -923,6 +947,10 @@ validate_gbm = function(t1){
   bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
   t1_train = bedroom_res[[1]]
   t1_test = bedroom_res[[2]]
+
+  listing_res = get_listing_outliers(t1_train, t1_test)
+  t1_train = listing_res[[1]]
+  t1_test = listing_res[[2]]
   
   # renthop_res = get_renthop_score(t1_train, t1_test)
   # t1_train = renthop_res[[1]]
@@ -1220,7 +1248,7 @@ t2 = bedroom_res[[2]]
 
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_27.csv", row.names = FALSE)
+write.csv(pred, "gbm_28.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
