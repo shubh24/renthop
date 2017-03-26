@@ -314,6 +314,9 @@ generate_df = function(df, train_flag){
       t1$latitude[as.character(t1$listing_id) == as.character(outliers_ny$listing_id[i])] = as.numeric(coord["lat"])
       t1$longitude[as.character(t1$listing_id) == outliers_ny$listing_id[i]] = as.numeric(coord["lon"])
     }
+    
+    t1$street_display_sim = levenshteinSim(t1$street_address, t1$display_address)
+    
     t1$street_address = NULL
     
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
@@ -853,8 +856,8 @@ get_bedroom_opportunity = function(t1, t2){
 }
 
 get_listing_outliers = function(t1, t2){
-  t1$yday = yday(t1$created)
-  t2yday = yday(t2$created)
+  t1$yday = lubridate::yday(t1$created)
+  t2$yday = lubridate::yday(t2$created)
   listing_df = rbind(t1[, c("listing_id", "yday")], t2[, c("listing_id", "yday")])
   
   listing_df$normal_limit = 0
@@ -870,7 +873,8 @@ get_listing_outliers = function(t1, t2){
   
   t1 = merge(t1, listing_df[, c("listing_id", "outlier")], by = "listing_id")
   t2 = merge(t2, listing_df[, c("listing_id", "outlier")], by = "listing_id")
- 
+  t1$yday = NULL
+  t2$yday = NULL
   return (list(t1, t2)) 
 }
 
@@ -948,7 +952,7 @@ validate_gbm = function(t1){
   t1_train = bedroom_res[[1]]
   t1_test = bedroom_res[[2]]
 
-  listing_res = get_listing_outliers(t1_train, t1_test)
+  listing_res = get_listing_outliers(t1_train, t1_test) #dont know why yday is not coming in t2 
   t1_train = listing_res[[1]]
   t1_test = listing_res[[2]]
   
