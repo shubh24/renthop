@@ -14,6 +14,7 @@ library(xgboost)
 library(ggmap)
 library(syuzhet)
 library(geosphere)
+library(RecordLinkage)
 
 #features to implement
 #adj/nouns usage
@@ -227,7 +228,7 @@ gbm_h2o = function(t1, t2){
                 ,min_rows = 10
                 ,sample_rate = 0.9
                 ,score_tree_interval = 10
-                ,col_sample_rate = 0.9
+                ,col_sample_rate = 0.7
                 ,stopping_rounds = 5
                 ,stopping_metric = "logloss"
                 ,stopping_tolerance = 1e-4
@@ -263,7 +264,7 @@ generate_df = function(df, train_flag){
                      ,hour=as.numeric(sapply(df$created, lubridate::hour))
                      ,minute=as.numeric(sapply(df$created, lubridate::minute))
                      #,interest_level=as.factor(unlist(df$interest_level))
-                     ,street_address=as.character(unlist(df$street_address)) # parse errors
+                     ,street_address=as.character(unlist(tolower(df$street_address))) # parse errors
     )
     
     if (train_flag == 1){
@@ -869,7 +870,8 @@ get_listing_outliers = function(t1, t2){
     listing_df$normal_limit[listing_df$yday == yday] = normal_limit
   }
   
-  listing_df$outlier = as.factor(listing_df$listing_id > listing_df$normal_limit)
+  # listing_df$outlier = as.factor(listing_df$listing_id > listing_df$normal_limit)
+  listing_df$outlier = (listing_df$listing_id - listing_df$normal_limit)
   
   t1 = merge(t1, listing_df[, c("listing_id", "outlier")], by = "listing_id")
   t2 = merge(t2, listing_df[, c("listing_id", "outlier")], by = "listing_id")
