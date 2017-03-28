@@ -259,6 +259,7 @@ generate_df = function(df, train_flag){
                      ,listing_id=unlist(df$listing_id)
                      ,manager_id=as.factor(unlist(df$manager_id))
                      ,price=unlist(df$price)
+                     ,month=as.numeric(sapply(df$created, lubridate::month))
                      ,mday=as.numeric(sapply(df$created, mday))
                      ,wday=as.factor(sapply(df$created, wday))
                      ,hour=as.numeric(sapply(df$created, lubridate::hour))
@@ -285,6 +286,10 @@ generate_df = function(df, train_flag){
       t1 = merge(t1, subway_test, by = "listing_id")
       t1$relevant_features = rowSums(strdetect_df_test)/t1$n_features
     }
+    
+    t1$total_days = (t1$month - 4.0)*30 + t1$mday +  t1$hour/25.0
+    t1$slope_listing_days = t1$listing_id/t1$total_days
+    t1$month = NULL
     
     # t1$caps_count = sapply(regmatches(as.vector(t1$description), gregexpr("[A-Z]", as.vector(t1$description), perl=TRUE)), length)
     # t1$caps_count = t1$caps_count/nchar(t1$description)
@@ -450,7 +455,7 @@ get_manager_scores = function(t1, t2){
   manager_df = cbind(manager_df, model.matrix( ~ interest_level - 1, data = manager_df))
 
   global_high_medium = (sum(manager_df$interest_levelhigh) + sum(manager_df$interest_levelmedium))/nrow(t1)
-  global_medium = sum(manager_df$interest_levelmedium)/nrow(t1)
+  # global_medium = sum(manager_df$interest_levelmedium)/nrow(t1)
   global_high = sum(manager_df$interest_levelhigh)/nrow(t1)
   
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
@@ -503,22 +508,24 @@ get_manager_scores = function(t1, t2){
   manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$manager_count
 
   manager_agg$high_medium_score = manager_agg$lambda*(manager_agg$interest_levelhigh+manager_agg$interest_levelmedium) + (1-manager_agg$lambda)*global_high_medium
-  manager_agg$medium_score = manager_agg$lambda*manager_agg$interest_levelmedium + (1-manager_agg$lambda)*global_medium
+  # manager_agg$medium_score = manager_agg$lambda*manager_agg$interest_levelmedium + (1-manager_agg$lambda)*global_medium
   manager_agg$high_score = manager_agg$lambda*manager_agg$interest_levelhigh + (1-manager_agg$lambda)*global_high
   manager_agg$lambda = NULL
   
-  manager_agg$manager_score = 2^(manager_agg$interest_levelhigh + manager_agg$interest_levelmedium)
+  manager_agg$manager_score = 2*manager_agg$interest_levelhigh + manager_agg$interest_levelmedium
   manager_agg$manager_score[manager_agg$manager_count < 10] = median(manager_agg$manager_score[manager_agg$manager_count >= 10])
 
   manager_agg$interest_levellow = NULL
-  manager_agg$interest_levelhigh = NULL
+  manager_agg$interest_levelhigh = NULL 
   manager_agg$interest_levelmedium = NULL
 
   t1 = merge(t1, manager_agg, by = "manager_id")
   t1 = merge(t1, manager_price, by = c("manager_id", "bedrooms"))
   t1 = unique(left_join(t1, check_expert_nbd, by = c("manager_id", "neighborhood")))
   # t1$price_ratio_manager_median = t1$price/t1$manager_median_price
+  
   t1$manager_opportunity = (t1$price - t1$manager_median_price)/t1$manager_median_price
+
   # t1$manager_opportunity_pr = (t1$price_per_room - t1$manager_median_price)/t1$manager_median_price
   t1$manager_median_price = NULL
   t1$manager_id = NULL
@@ -536,7 +543,8 @@ get_manager_scores = function(t1, t2){
   
   t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE) #Leave it as NA and try!
   t2$high_score[is.na(t2$high_score)] = global_high
-  # t2$medium_score[is.na(t2$medium_score)] = median(t2$medium_score, na.rm = TRUE) #Leave it as NA and try!
+  # t2$medium_score[is.na(t2$medium_score)] = global_medium #Leave it as NA and try!
+  t2$high_medium_score[is.na(t2$high_medium_score)] = global_high_medium
   
   t2$manager_id = NULL
 
@@ -611,14 +619,40 @@ get_street_scores = function(t1, t2){
   street_agg = aggregate(price ~ street_int_id + bedrooms, data = street_price, FUN = median)
   colnames(street_agg)[colnames(street_agg) == "price"] = "median_price_street"
 
+  street_df = t1[, c("street_int_id", "interest_level")]
+  street_df = cbind(street_df, model.matrix( ~ interest_level - 1, data = street_df))
+  
+  global_high_medium = (sum(street_df$interest_levelhigh) + sum(street_df$interest_levelmedium))/nrow(t1)
+  global_high = sum(street_df$interest_levelhigh)/nrow(t1)
+  
+  street_agg_score = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ street_int_id, data = street_df, FUN = sum)
+  street_agg_score$street_count = rowSums(street_agg_score[,c(2:4)])
+  street_agg_score$lambda = 1/(1+exp((15 - street_agg_score$street_count)*2)) 
+  
+  street_agg_score[, c(2:4)] = street_agg_score[, c(2:4)]/street_agg_score$street_count
+  
+  street_agg_score$high_medium_street_score = street_agg_score$lambda*(street_agg_score$interest_levelhigh+street_agg_score$interest_levelmedium) + (1-street_agg_score$lambda)*global_high_medium
+  street_agg_score$high_street_score = street_agg_score$lambda*street_agg_score$interest_levelhigh + (1-street_agg_score$lambda)*global_high
+
+  street_agg_score$lambda = NULL
+  street_agg_score$interest_levellow = NULL
+  street_agg_score$interest_levelhigh = NULL 
+  street_agg_score$interest_levelmedium = NULL
+  street_agg_score$interest_level = NULL
+  
   t1 = merge(t1, street_agg, by = c("street_int_id", "bedrooms"))
   t1$street_opportunity = (t1$price - t1$median_price_street)/t1$median_price_street
   t1$median_price_street = NULL
+  t1 = merge(t1, street_agg_score, by = c("street_int_id"))
   
   t2 = left_join(t2, as.data.table(street_agg), by = c("street_int_id", "bedrooms"))
 
   t2$street_opportunity = (t2$price - t2$median_price_street)/t2$median_price_street
   t2$median_price_street = NULL
+  t2 = merge(t2, street_agg_score, by = c("street_int_id"))
+  t2$high_street_score[is.na(t2$high_street_score)] = global_high
+  t2$high_medium_street_score[is.na(t2$high_medium_street_score)] = global_high_medium
+  
   
   # street_df = t1[, c("street_int_id", "interest_level")]
   # street_df = cbind(street_df, model.matrix( ~ interest_level - 1, data = street_df))
@@ -893,7 +927,7 @@ validate_gbm = function(t1){
   colnames(street_count_df) = c("street_int_id", "street_count")
   street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
   t1 = merge(t1, street_count_df, by = "street_int_id")
-  t1$street_int_id = NULL
+  # t1$street_int_id = NULL
   t1$display_address = NULL
   
   t1$manager_int_id = as.integer(as.factor(t1$manager_id))
@@ -904,8 +938,8 @@ validate_gbm = function(t1){
   
   t1_train$display_address = NULL
   t1_test$display_address = NULL
-  t1_train$street_int_id = NULL
-  t1_test$street_int_id = NULL
+  # t1_train$street_int_id = NULL
+  # t1_test$street_int_id = NULL
   
   # gbm_tuning(t1_train, t1_test)
   
@@ -932,10 +966,10 @@ validate_gbm = function(t1){
   # t1_train = bulk_res[[1]]
   # t1_test = bulk_res[[2]]
 
-  # street_res = get_street_scores(t1_train, t1_test)
-  # t1_train = street_res[[1]]
+  street_res = get_street_scores(t1_train, t1_test)
+  t1_train = street_res[[1]]
   # t1_train$street_address = NULL
-  # t1_test = street_res[[2]]
+  t1_test = street_res[[2]]
   # t1_test$street_address = NULL
   
   manager_res = get_manager_scores(t1_train, t1_test)
