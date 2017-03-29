@@ -221,7 +221,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 100
+                ,ntrees = 1000
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 7
@@ -491,6 +491,30 @@ get_multi_town = function(t1, t2){
   return(list(t1, t2))
 }
 
+get_street_opportunity = function(t1, t2){
+ 
+  street_price = rbind(t1[, c("street_int_id", "bedrooms", "price", "neighborhood")], t2[, c("street_int_id", "bedrooms", "price", "neighborhood")])
+  
+  street_agg = aggregate(price ~ street_int_id + bedrooms + neighborhood, data = street_price, FUN = median)
+  colnames(street_agg)[colnames(street_agg) == "price"] = "median_price_street"
+  
+  nbd_price = rbind(t1[, c("neighborhood", "bedrooms", "price")], t2[, c("neighborhood", "bedrooms", "price")])
+  
+  nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = nbd_price, FUN = median)
+  colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
+  
+  street_agg = merge(street_agg, nbd_agg, by = c("neighborhood", "bedrooms"))
+  
+  street_agg$street_opportunity = (street_agg$median_price_street - street_agg$median_price_nbd)/street_agg$median_price_nbd
+  street_agg$median_price_street = NULL
+  street_agg$median_price_nbd = NULL
+  
+  t1 = merge(t1, street_agg, by = c("street_int_id", "bedrooms", "neighborhood"))
+  t2 = merge(t2, street_agg, by = c("street_int_id", "bedrooms", "neighborhood"))
+  
+  return (list(t1, t2))
+}
+
 get_manager_building_count = function(t1, t2){
   
   manager_df = unique(rbind(t1[, c("manager_id", "building_id")], t2[, c("manager_id", "building_id")]))
@@ -617,7 +641,11 @@ get_manager_scores = function(t1, t2){
   t2 = unique(left_join(t2, check_expert_nbd, by = c("manager_id", "neighborhood"), copy = TRUE))
   
   t2_manager_table = as.data.frame(table(t2$manager_id))
-  t2$manager_count[is.na(t2$manager_count)] = t2_manager_table$Freq[t2_manager_table$Var1 == t2$manager_id[is.na(t2$manager_count)]]
+  colnames(t2_manager_table) = c("manager_id", "na_manager_count")
+  t2 = merge(t2, t2_manager_table, by = "manager_id")
+  t2$manager_count[is.na(t2$manager_count)] = t2$na_manager_count[is.na(t2$manager_count)]
+  t2$na_manager_count = NULL
+  
   # t2$manager_median_price[is.na(t2$manager_median_price)] = median(t2$manager_median_price, na.rm = TRUE) 
   # t2$price_ratio_manager_median = t2$price/t2$manager_median_price
 
@@ -768,6 +796,24 @@ get_street_scores = function(t1, t2){
   return(list(t1, t2))
 }
 
+get_town_opportunity = function(t1, t2){
+  
+  town_price = rbind(t1[, c("town", "bedrooms", "price")], t2[, c("town", "bedrooms", "price")])
+  
+  town_agg = aggregate(price ~ town + bedrooms, data = town_price, FUN = median)
+  colnames(town_agg)[colnames(town_agg) == "price"] = "median_price_town"
+  
+  t1 = left_join(t1, as.data.table(town_agg), by = c("town", "bedrooms"))
+  t1$town_opportunity = (t1$price - t1$median_price_town)/t1$median_price_town
+  t1$median_price_town = NULL
+  
+  t2 = left_join(t2, as.data.table(town_agg), by = c("town", "bedrooms"))
+  t2$town_opportunity = (t2$price - t2$median_price_town)/t2$median_price_town
+  t2$median_price_town = NULL
+  
+  return (list(t1, t2))  
+}
+
 get_nbd_scores = function(t1, t2){
 
   nbd_price = rbind(t1[, c("neighborhood", "bedrooms", "price")], t2[, c("neighborhood", "bedrooms", "price")])
@@ -775,14 +821,13 @@ get_nbd_scores = function(t1, t2){
   nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = nbd_price, FUN = median)
   colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
   
-  t1 = left_join(t1, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
+  t1 = merge(t1, nbd_agg, by = c("neighborhood", "bedrooms"))
   t1$nbd_opportunity = (t1$price - t1$median_price_nbd)/t1$median_price_nbd
   t1$median_price_nbd = NULL
   
   t2 = left_join(t2, as.data.table(nbd_agg), by = c("neighborhood", "bedrooms"))
   t2$nbd_opportunity = (t2$price - t2$median_price_nbd)/t2$median_price_nbd
   t2$median_price_nbd = NULL
-  
   # t2$price_diff_from_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)] - t2$median_price_nbd[!is.na(t2$median_price_nbd)]
   # t2$price_diff_from_median[is.na(t2$median_price_nbd)] = 0
   # t2$price_ratio_with_median[!is.na(t2$median_price_nbd)] = t2$price[!is.na(t2$median_price_nbd)]/t2$median_price_nbd[!is.na(t2$median_price_nbd)]
@@ -1009,15 +1054,14 @@ get_listing_outliers = function(t1, t2){
 validate_gbm = function(t1){
   set.seed(101) 
   
-  t1$display_address=as.character(unlist(tolower(df$display_address)))
-
   t1$street_int_id = as.integer(as.factor(t1$display_address))
   
   street_count_df = as.data.frame(table(as.factor(t1$street_int_id)))
   colnames(street_count_df) = c("street_int_id", "street_count")
   street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
+  
   t1 = merge(t1, street_count_df, by = "street_int_id")
-  t1$street_int_id = NULL
+  # t1$street_int_id = NULL
   t1$display_address = NULL
   
   t1$manager_int_id = as.integer(as.factor(t1$manager_id))
@@ -1025,11 +1069,6 @@ validate_gbm = function(t1){
   sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
   t1_train <- t1[sample, ]
   t1_test <- t1[-sample, ]
-  
-  t1_train$display_address = NULL
-  t1_test$display_address = NULL
-  t1_train$street_int_id = NULL
-  t1_test$street_int_id = NULL
   
   # gbm_tuning(t1_train, t1_test)
   
@@ -1056,12 +1095,10 @@ validate_gbm = function(t1){
   # t1_train = bulk_res[[1]]
   # t1_test = bulk_res[[2]]
 
-  # street_res = get_street_scores(t1_train, t1_test)
+  # street_res = get_street_opportunity(t1_train, t1_test)
   # t1_train = street_res[[1]]
-  # # t1_train$street_address = NULL
   # t1_test = street_res[[2]]
-  # # t1_test$street_address = NULL
-  
+
   multi_town_res = get_multi_town(t1_train, t1_test)
   t1_train = multi_town_res[[1]]
   t1_test = multi_town_res[[2]]
@@ -1085,6 +1122,10 @@ validate_gbm = function(t1){
   nbd_res = get_nbd_scores(t1_train, t1_test)
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
+
+  town_res = get_town_opportunity(t1_train, t1_test)
+  t1_train = town_res[[1]]
+  t1_test = town_res[[2]]
   
   bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
   t1_train = bedroom_res[[1]]
