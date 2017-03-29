@@ -288,7 +288,7 @@ generate_df = function(df, train_flag){
     }
     
     t1$total_days = (t1$month - 4.0)*30 + t1$mday +  t1$hour/25.0
-    t1$slope_listing_days = t1$listing_id/t1$total_days
+    t1$slope_listing_days = (t1$listing_id - min(t1$listing_id))/t1$total_days
     t1$month = NULL
     
     # t1$caps_count = sapply(regmatches(as.vector(t1$description), gregexpr("[A-Z]", as.vector(t1$description), perl=TRUE)), length)
@@ -394,6 +394,10 @@ generate_df = function(df, train_flag){
     t1$price_per_bedroom = log(t1$price_per_bedroom)
     t1$price_per_bathroom = log(t1$price_per_bathroom)
     
+    t1$minutes = t1$hour*60 + t1$minute
+    t1$hour = NULL
+    t1$minute = NULL
+    
     return (t1)
 }
 
@@ -485,6 +489,22 @@ get_multi_town = function(t1, t2){
   t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
 
   return(list(t1, t2))
+}
+
+get_manager_building_count = function(t1, t2){
+  
+  manager_df = unique(rbind(t1[, c("manager_id", "building_id")], t2[, c("manager_id", "building_id")]))
+  manager_df$mb_count = 1
+  
+  manager_agg = aggregate(mb_count ~ manager_id, data = manager_df, FUN = sum)
+  
+  t1 = merge(t1, manager_agg, by = "manager_id")
+  t2 = merge(t2, as.data.table(manager_agg), by = "manager_id")
+
+  t1$building_id = NULL
+  t2$building_id = NULL
+  
+  return (list(t1, t2))  
 }
 
 get_manager_town_opp = function(t1, t2){
@@ -596,7 +616,8 @@ get_manager_scores = function(t1, t2){
   t2 = left_join(t2, as.data.table(manager_price), by = c("manager_id", "bedrooms"), copy = TRUE)
   t2 = unique(left_join(t2, check_expert_nbd, by = c("manager_id", "neighborhood"), copy = TRUE))
   
-  t2$manager_count[is.na(t2$manager_count)] = 1
+  t2_manager_table = as.data.frame(table(t2$manager_id))
+  t2$manager_count[is.na(t2$manager_count)] = t2_manager_table$Freq[t2_manager_table$Var1 == t2$manager_id[is.na(t2$manager_count)]]
   # t2$manager_median_price[is.na(t2$manager_median_price)] = median(t2$manager_median_price, na.rm = TRUE) 
   # t2$price_ratio_manager_median = t2$price/t2$manager_median_price
 
@@ -988,7 +1009,6 @@ get_listing_outliers = function(t1, t2){
 validate_gbm = function(t1){
   set.seed(101) 
   
-  t1$building_id = NULL
   t1$display_address=as.character(unlist(tolower(df$display_address)))
 
   t1$street_int_id = as.integer(as.factor(t1$display_address))
@@ -1049,6 +1069,10 @@ validate_gbm = function(t1){
   mtb_opp_res = get_manager_town_opp(t1_train, t1_test)
   t1_train = mtb_opp_res[[1]]
   t1_test = mtb_opp_res[[2]]
+  
+  mb_count_res = get_manager_building_count(t1_train, t1_test)
+  t1_train = mb_count_res[[1]]
+  t1_test = mb_count_res[[2]]
   
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
