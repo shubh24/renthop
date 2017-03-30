@@ -221,10 +221,10 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 1000
+                ,ntrees = 1400
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
-                ,max_depth = 7
+                ,max_depth = 6
                 ,min_rows = 10
                 ,sample_rate = 0.9
                 ,score_tree_interval = 10
@@ -529,6 +529,20 @@ get_manager_building_count = function(t1, t2){
   t2$building_id = NULL
   
   return (list(t1, t2))  
+}
+
+get_manager_address_count = function(t1, t2){
+  
+  manager_df = unique(rbind(t1[, c("manager_id", "street_int_id")], t2[, c("manager_id", "street_int_id")]))
+  manager_df$ms_count = 1
+  
+  manager_agg = aggregate(ms_count ~ manager_id, data = manager_df, FUN = sum)
+  
+  t1 = merge(t1, manager_agg, by = "manager_id")
+  t2 = merge(t2, as.data.table(manager_agg), by = "manager_id")
+  
+  return (list(t1, t2))  
+  
 }
 
 get_manager_town_opp = function(t1, t2){
@@ -1111,6 +1125,10 @@ validate_gbm = function(t1){
   t1_train = mb_count_res[[1]]
   t1_test = mb_count_res[[2]]
   
+  ms_count_res = get_manager_address_count(t1_train, t1_test)
+  t1_train = ms_count_res[[1]]
+  t1_test = ms_count_res[[2]]
+  
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
   t1_test = manager_res[[2]]
@@ -1393,9 +1411,9 @@ street_address_df = merge(street_address_df, street_count_df, by = "street_int_i
 t1 = merge(t1, street_address_df[, c("listing_id", "street_count")], by = "listing_id")
 t2 = merge(t2, street_address_df[, c("listing_id", "street_count")], by = "listing_id")
 
-t1$street_int_id = NULL
+# t1$street_int_id = NULL
 t1$display_address = NULL
-t2$street_int_id = NULL
+# t2$street_int_id = NULL
 t2$display_address = NULL
 
 manager_int_df = rbind(t1[, c("listing_id", "manager_id")], t2[, c("listing_id", "manager_id")])
@@ -1406,12 +1424,25 @@ t2 = left_join(t2, manager_int_df[, c("listing_id", "manager_int_id")], by = "li
 t1 = get_last_active(t1)
 t2 = get_last_active(t2)
 
-t1$building_id = NULL
-t2$building_id = NULL
-
 nbd_manager_res = get_specialized_mangers(t1, t2)
 t1 = nbd_manager_res[[1]]
 t2 = nbd_manager_res[[2]]
+
+multi_town_res = get_multi_town(t1, t2)
+t1 = multi_town_res[[1]]
+t2 = multi_town_res[[2]]
+
+mtb_opp_res = get_manager_town_opp(t1, t2)
+t1 = mtb_opp_res[[1]]
+t2 = mtb_opp_res[[2]]
+
+mb_count_res = get_manager_building_count(t1, t2)
+t1 = mb_count_res[[1]]
+t2 = mb_count_res[[2]]
+
+ms_count_res = get_manager_address_count(t1, t2)
+t1 = ms_count_res[[1]]
+t2 = ms_count_res[[2]]
 
 manager_res = get_manager_scores(t1, t2)
 t1 = manager_res[[1]]
@@ -1425,13 +1456,24 @@ nbd_res = get_nbd_scores(t1, t2)
 t1 = nbd_res[[1]]
 t2 = nbd_res[[2]]
 
+town_res = get_town_opportunity(t1, t2)
+t1 = town_res[[1]]
+t2 = town_res[[2]]
+
 bedroom_res = get_bedroom_opportunity(t1, t2)
 t1 = bedroom_res[[1]]
 t2 = bedroom_res[[2]]
 
+listing_res = get_listing_outliers(t1, t2) 
+t1 = listing_res[[1]]
+t2 = listing_res[[2]]
+
+t1$building_id = NULL
+t2$building_id = NULL
+
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_28.csv", row.names = FALSE)
+write.csv(pred, "gbm_29.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
