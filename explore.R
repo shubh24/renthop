@@ -221,7 +221,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 1400
+                ,ntrees = 100
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -237,6 +237,38 @@ gbm_h2o = function(t1, t2){
   print(as.data.frame(h2o.varimp(gbm1)))
   res = as.data.frame(predict(gbm1, test_h2o))
 
+  return(res)
+}
+
+dl_h2o = function(t1, t2){
+  
+  write.table(t1, gzfile('./t1.csv.gz'),quote=F,sep=',',row.names=F)
+  write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
+  
+  feature_names = names(t1)
+  feature_names = feature_names[!feature_names %in% c("created")]
+  # feature_names = feature_names[!feature_names %in% c("listing_id")]
+  feature_names = feature_names[!feature_names %in% c("interest_level")]
+  
+  train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
+  test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
+  
+  dl1 <- h2o.deeplearning(
+    model_id = "dl_1", # (optional) assign a user-specified id to the model
+    training_frame = train_h2o, 
+    # validation_frame = valid, # validation dataset: used for scoring and early stopping
+    x = feature_names,
+    y = "interest_level",
+    activation = "Rectifier", # default (a.k.a Relu)
+    hidden = c(200, 200),    # default = 2 hidden layers with 200 neurons each
+    epochs = 1, # How many times the dataset should be iterated
+    variable_importances = TRUE # allows obtaining the variable importance, not enabled by default
+  )
+  
+  
+  print(as.data.frame(h2o.varimp(dl1)))
+  res = as.data.frame(predict(dl1, test_h2o))
+  
   return(res)
 }
 
@@ -498,16 +530,19 @@ get_street_opportunity = function(t1, t2){
   street_agg = aggregate(price ~ street_int_id + bedrooms + neighborhood, data = street_price, FUN = median)
   colnames(street_agg)[colnames(street_agg) == "price"] = "median_price_street"
   
-  nbd_price = rbind(t1[, c("neighborhood", "bedrooms", "price")], t2[, c("neighborhood", "bedrooms", "price")])
+  # nbd_price = rbind(t1[, c("neighborhood", "bedrooms", "price")], t2[, c("neighborhood", "bedrooms", "price")])
+  # nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = nbd_price, FUN = median)
+  # colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
+  # street_agg = merge(street_agg, nbd_agg, by = c("neighborhood", "bedrooms"))
   
-  nbd_agg = aggregate(price ~ neighborhood + bedrooms, data = nbd_price, FUN = median)
-  colnames(nbd_agg)[colnames(nbd_agg) == "price"] = "median_price_nbd"
+  nbd_agg = aggregate(median_price_street ~ neighborhood, data = street_agg, FUN = median)
+  colnames(nbd_agg)[colnames(nbd_agg) == "median_price_street"] = "median_price_street_nbd"
   
-  street_agg = merge(street_agg, nbd_agg, by = c("neighborhood", "bedrooms"))
-  
-  street_agg$street_opportunity = (street_agg$median_price_street - street_agg$median_price_nbd)/street_agg$median_price_nbd
+  street_agg = merge(street_agg, nbd_agg, by = "neighborhood")
+
+  street_agg$street_opportunity = (street_agg$median_price_street - street_agg$median_price_street_nbd)/street_agg$median_price_street_nbd
   street_agg$median_price_street = NULL
-  street_agg$median_price_nbd = NULL
+  street_agg$median_price_street_nbd = NULL
   
   t1 = merge(t1, street_agg, by = c("street_int_id", "bedrooms", "neighborhood"))
   t2 = merge(t2, street_agg, by = c("street_int_id", "bedrooms", "neighborhood"))
@@ -536,10 +571,10 @@ get_manager_address_count = function(t1, t2){
   manager_df = unique(rbind(t1[, c("manager_id", "street_int_id")], t2[, c("manager_id", "street_int_id")]))
   manager_df$ms_count = 1
   
-  manager_agg = aggregate(ms_count ~ manager_id, data = manager_df, FUN = sum)
+  manager_agg = aggregate(ms_count ~ manager_id+street_int_id, data = manager_df, FUN = sum)
   
-  t1 = merge(t1, manager_agg, by = "manager_id")
-  t2 = merge(t2, as.data.table(manager_agg), by = "manager_id")
+  t1 = merge(t1, manager_agg, by = c("manager_id", "street_int_id"))
+  t2 = merge(t2, as.data.table(manager_agg), by = c("manager_id", "street_int_id"))
   
   return (list(t1, t2))  
   
@@ -1109,9 +1144,9 @@ validate_gbm = function(t1){
   # t1_train = bulk_res[[1]]
   # t1_test = bulk_res[[2]]
 
-  # street_res = get_street_opportunity(t1_train, t1_test)
-  # t1_train = street_res[[1]]
-  # t1_test = street_res[[2]]
+  street_res = get_street_opportunity(t1_train, t1_test)
+  t1_train = street_res[[1]]
+  t1_test = street_res[[2]]
 
   multi_town_res = get_multi_town(t1_train, t1_test)
   t1_train = multi_town_res[[1]]
@@ -1128,7 +1163,7 @@ validate_gbm = function(t1){
   ms_count_res = get_manager_address_count(t1_train, t1_test)
   t1_train = ms_count_res[[1]]
   t1_test = ms_count_res[[2]]
-  
+
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
   t1_test = manager_res[[2]]
@@ -1158,6 +1193,7 @@ validate_gbm = function(t1){
   # t1_test = renthop_res[[2]]
 
   res_val = gbm_h2o(t1_train, t1_test)
+  # dl_val = dl_h2o(t1_train, t1_test)
   
   print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
   print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(res_val[,c("high", "low", "medium")])))
