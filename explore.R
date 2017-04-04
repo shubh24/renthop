@@ -221,7 +221,7 @@ gbm_h2o = function(t1, t2){
                 ,distribution = "multinomial"
                 ,model_id = "gbm1"
                 # ,nfolds = 5
-                ,ntrees = 100
+                ,ntrees = 1400
                 # ,learn_rate = 0.004
                 ,learn_rate = 0.01
                 ,max_depth = 6
@@ -1022,23 +1022,46 @@ get_hour_freq = function(t1, t2){
 
 get_time_scores = function(t1, t2){
 
-  min_created = min(min(t1$created), min(t2$created))
+  # min_created = min(min(t1$created), min(t2$created))
+  # 
+  # t1$hour_serial = as.integer(difftime(t1$created, min_created, units = "days"))
+  # t2$hour_serial = as.integer(difftime(t2$created, min_created, units = "days"))
+  # 
+  # time_nbd_df = rbind(t1[, c("listing_id", "created", "neighborhood", "bedrooms", "price", "hour_serial")], t2[, c("listing_id", "created",  "neighborhood", "bedrooms", "price", "hour_serial")])
+  # 
+  # hour_median_price = aggregate(price ~ neighborhood + bedrooms + hour_serial, data = time_nbd_df, FUN = median)
+  # colnames(hour_median_price)[colnames(hour_median_price) == "price"] = c("hour_median_price")
+  # 
+  # t1 = merge(t1, hour_median_price, by = c("neighborhood", "bedrooms", "hour_serial"))
+  # t2 = merge(t2, hour_median_price, by = c("neighborhood", "bedrooms", "hour_serial"))
+  # 
+  # t1$hour_opportunity = (t1$price - t1$hour_median_price)/t1$hour_median_price
+  # t1$hour_median_price = NULL
+  # t2$hour_opportunity = (t2$price - t2$hour_median_price)/t2$hour_median_price
+  # t2$hour_median_price = NULL
   
-  t1$hour_serial = as.integer(difftime(t1$created, min_created, units = "days"))
-  t2$hour_serial = as.integer(difftime(t2$created, min_created, units = "days"))
+  t1$hour = lubridate::hour(t1$created)
+  t2$hour = lubridate::hour(t2$created)
   
-  time_nbd_df = rbind(t1[, c("listing_id", "created", "neighborhood", "bedrooms", "price", "hour_serial")], t2[, c("listing_id", "created",  "neighborhood", "bedrooms", "price", "hour_serial")])
-
-  hour_median_price = aggregate(price ~ neighborhood + bedrooms + hour_serial, data = time_nbd_df, FUN = median)
-  colnames(hour_median_price)[colnames(hour_median_price) == "price"] = c("hour_median_price")
+  hour_df = t1[, c("hour", "interest_level")]
+  hour_df = cbind(hour_df, model.matrix( ~ interest_level - 1, data = hour_df))
   
-  t1 = merge(t1, hour_median_price, by = c("neighborhood", "bedrooms", "hour_serial"))
-  t2 = merge(t2, hour_median_price, by = c("neighborhood", "bedrooms", "hour_serial"))
+  hour_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ hour, data = hour_df, FUN = sum)
+  hour_agg$hour_count = rowSums(hour_agg[,c(2:4)])
   
-  t1$hour_opportunity = (t1$price - t1$hour_median_price)/t1$hour_median_price
-  t1$hour_median_price = NULL
-  t2$hour_opportunity = (t2$price - t2$hour_median_price)/t2$hour_median_price
-  t2$hour_median_price = NULL
+  hour_agg[, c(2:4)] = hour_agg[, c(2:4)]/hour_agg$hour_count
+  hour_agg$hour_score = 2*hour_agg$interest_levelhigh + hour_agg$interest_levelmedium
+  hour_agg$interest_levelhigh = NULL
+  hour_agg$interest_levelmedium = NULL
+  hour_agg$interest_levellow = NULL
+  hour_agg$hour_count = NULL
+  hour_agg$interest_level = NULL
+  
+  t1 = merge(t1, hour_agg, by = "hour")
+  t2 = merge(t2, hour_agg, by = "hour")
+  
+  t1$hour = NULL
+  t2$hour = NULL
   
   return (list(t1, t2))
 }
@@ -1081,17 +1104,23 @@ get_listing_outliers = function(t1, t2){
   t2$yday = lubridate::yday(t2$created)
   listing_df = rbind(t1[, c("listing_id", "yday")], t2[, c("listing_id", "yday")])
   
-  listing_df$normal_limit = 0
-  for (i in 1:length(unique(listing_df$yday))){
-    yday = unique(listing_df$yday)[i]
-    
-    normal_limit = as.numeric(quantile(listing_df$listing_id[listing_df$yday == yday], 0.9))
-    
-    listing_df$normal_limit[listing_df$yday == yday] = normal_limit
-  }
+  # listing_df$normal_limit = 0
+  # for (i in 1:length(unique(listing_df$yday))){
+  #   yday = unique(listing_df$yday)[i]
+  #   
+  #   normal_limit = as.numeric(quantile(listing_df$listing_id[listing_df$yday == yday], 0.9))
+  #   
+  #   listing_df$normal_limit[listing_df$yday == yday] = normal_limit
+  # }
   
   # listing_df$outlier = as.factor(listing_df$listing_id > listing_df$normal_limit)
-  listing_df$outlier = (listing_df$listing_id - listing_df$normal_limit)
+  median_listing = aggregate(listing_id ~ yday, data = listing_df, FUN = median)
+  
+  colnames(median_listing) = c("yday", "median_listing")
+  listing_df = merge(listing_df, median_listing, by = "yday")
+  
+  listing_df$outlier = (listing_df$listing_id - listing_df$median_listing)/listin_df$median_listing
+  listing_df$median_listing = NULL
   
   t1 = merge(t1, listing_df[, c("listing_id", "outlier")], by = "listing_id")
   t2 = merge(t2, listing_df[, c("listing_id", "outlier")], by = "listing_id")
@@ -1128,15 +1157,15 @@ validate_gbm = function(t1){
   # t1_train = building_res[[1]]
   # t1_test = building_res[[2]]
 
-  # time_res = get_time_scores(t1_train, t1_test)
-  # t1_train = time_res[[1]]
-  # t1_test = time_res[[2]]
+  time_res = get_time_scores(t1_train, t1_test)
+  t1_train = time_res[[1]]
+  t1_test = time_res[[2]]
   
   # town_res = get_town_scores(t1_train, t1_test)
   # t1_train = town_res[[1]]
   # t1_test = town_res[[2]]
   
-  nbd_manager_res = get_specialized_mangers(t1_train, t1_test)
+  nbd_manager_res = get_specialized_mangers(t1_train, t1_test) #Manager nbd count
   t1_train = nbd_manager_res[[1]]
   t1_test = nbd_manager_res[[2]]
   
@@ -1144,13 +1173,13 @@ validate_gbm = function(t1){
   # t1_train = bulk_res[[1]]
   # t1_test = bulk_res[[2]]
 
-  street_res = get_street_opportunity(t1_train, t1_test)
+  street_res = get_street_opportunity(t1_train, t1_test) #JBN road in Indiranagar
   t1_train = street_res[[1]]
   t1_test = street_res[[2]]
 
-  multi_town_res = get_multi_town(t1_train, t1_test)
-  t1_train = multi_town_res[[1]]
-  t1_test = multi_town_res[[2]]
+  # multi_town_res = get_multi_town(t1_train, t1_test)
+  # t1_train = multi_town_res[[1]]
+  # t1_test = multi_town_res[[2]]
 
   mtb_opp_res = get_manager_town_opp(t1_train, t1_test)
   t1_train = mtb_opp_res[[1]]
@@ -1184,7 +1213,7 @@ validate_gbm = function(t1){
   t1_train = bedroom_res[[1]]
   t1_test = bedroom_res[[2]]
 
-  listing_res = get_listing_outliers(t1_train, t1_test) #dont know why yday is not coming in t2 
+  listing_res = get_listing_outliers(t1_train, t1_test)  
   t1_train = listing_res[[1]]
   t1_test = listing_res[[2]]
   
@@ -1463,6 +1492,10 @@ t2 = get_last_active(t2)
 nbd_manager_res = get_specialized_mangers(t1, t2)
 t1 = nbd_manager_res[[1]]
 t2 = nbd_manager_res[[2]]
+
+street_res = get_street_opportunity(t1, t2)
+t1 = street_res[[1]]
+t2 = street_res[[2]]
 
 multi_town_res = get_multi_town(t1, t2)
 t1 = multi_town_res[[1]]
