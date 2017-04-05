@@ -32,4 +32,4 @@ def correct(df):
 
 df_correct = correct(df)
 
-df_correct.to_csv(file + '_corrected.csv')
+df_correct.to_csv(file + '_corrected.csv', index = False)
