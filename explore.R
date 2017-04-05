@@ -673,7 +673,7 @@ get_manager_scores = function(t1, t2){
   manager_agg$manager_score[manager_agg$manager_count < 10] = median(manager_agg$manager_score[manager_agg$manager_count >= 10])
 
   manager_agg$interest_levellow = NULL
-  manager_agg$interest_levelhigh = NULL 
+  manager_agg$interest_levelhigh = NULL
   manager_agg$interest_levelmedium = NULL
 
   t1 = merge(t1, manager_agg, by = "manager_id")
@@ -1233,52 +1233,110 @@ validate_gbm = function(t1){
   
 }
 
-validate_xgb = function(train_xgb, train_y){
-  set.seed(101) 
-  train_xgb$building_id = NULL
+validate_xgb = function(t1){
+  set.seed(1001) 
   
-  sample <- sample.int(nrow(train_xgb), floor(.75*nrow(train_xgb)), replace = F)
-  train_xgb_train <- train_xgb[sample, ]
-  train_xgb_val <- train_xgb[-sample, ]
+  t1$street_int_id = as.integer(as.factor(t1$display_address))
   
-  # train_xgb_train = get_last_active(train_xgb_train)
-  # train_xgb_val = get_last_active(train_xgb_val)
+  street_count_df = as.data.frame(table(as.factor(t1$street_int_id)))
+  colnames(street_count_df) = c("street_int_id", "street_count")
+  street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
   
-  # building_res = get_building_scores(train_xgb_train, train_xgb_val)
-  # train_xgb_train = building_res[[1]]
-  # train_xgb_val = building_res[[2]]
+  t1 = merge(t1, street_count_df, by = "street_int_id")
+  # t1$street_int_id = NULL
+  t1$display_address = NULL
+  
+  t1$manager_int_id = as.integer(as.factor(t1$manager_id))
+  
+  sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
+  t1_train <- t1[sample, ]
+  t1_test <- t1[-sample, ]
 
-  # nbd_manager_res = get_specialized_mangers(train_xgb_train, train_xgb_val)
-  # train_xgb_train = nbd_manager_res[[1]]
-  # train_xgb_val = nbd_manager_res[[2]]
+  # gbm_tuning(t1_train, t1_test)
   
-  manager_res = get_manager_scores(train_xgb_train, train_xgb_val)
-  train_xgb_train = manager_res[[1]]
-  train_xgb_val = manager_res[[2]]
+  # t1_train = get_last_active(t1_train)
+  # t1_test = get_last_active(t1_test)
   
-  hour_res = get_hour_freq(train_xgb_train, train_xgb_val)
-  train_xgb_train = hour_res[[1]]
-  train_xgb_val = hour_res[[2]]
+  # building_res = get_building_scores(t1_train, t1_test)
+  # t1_train = building_res[[1]]
+  # t1_test = building_res[[2]]
   
-  nbd_res = get_nbd_scores(train_xgb_train, train_xgb_val)
-  train_xgb_train = nbd_res[[1]]
-  train_xgb_val = nbd_res[[2]]
+  time_res = get_time_scores(t1_train, t1_test)
+  t1_train = time_res[[1]]
+  t1_test = time_res[[2]]
   
-  train_y_train = train_y[1:nrow(train_xgb_train)]
+  # town_res = get_town_scores(t1_train, t1_test)
+  # t1_train = town_res[[1]]
+  # t1_test = town_res[[2]]
   
-  train_y_val = train_y[37015:length(train_y)]
+  nbd_manager_res = get_specialized_mangers(t1_train, t1_test) #Manager nbd count
+  t1_train = nbd_manager_res[[1]]
+  t1_test = nbd_manager_res[[2]]
+  
+  # bulk_res = get_bulk_listing(t1_train, t1_test)
+  # t1_train = bulk_res[[1]]
+  # t1_test = bulk_res[[2]]
+  
+  street_res = get_street_opportunity(t1_train, t1_test) #JBN road in Indiranagar
+  t1_train = street_res[[1]]
+  t1_test = street_res[[2]]
+  
+  # multi_town_res = get_multi_town(t1_train, t1_test)
+  # t1_train = multi_town_res[[1]]
+  # t1_test = multi_town_res[[2]]
+  
+  mtb_opp_res = get_manager_town_opp(t1_train, t1_test)
+  t1_train = mtb_opp_res[[1]]
+  t1_test = mtb_opp_res[[2]]
+  
+  mb_count_res = get_manager_building_count(t1_train, t1_test)
+  t1_train = mb_count_res[[1]]
+  t1_test = mb_count_res[[2]]
+  
+  ms_count_res = get_manager_address_count(t1_train, t1_test)
+  t1_train = ms_count_res[[1]]
+  t1_test = ms_count_res[[2]]
+  
+  manager_res = get_manager_scores(t1_train, t1_test)
+  t1_train = manager_res[[1]]
+  t1_test = manager_res[[2]]
+  
+  hour_res = get_hour_freq(t1_train, t1_test)
+  t1_train = hour_res[[1]]
+  t1_test = hour_res[[2]]
+  
+  nbd_res = get_nbd_scores(t1_train, t1_test)
+  t1_train = nbd_res[[1]]
+  t1_test = nbd_res[[2]]
+  
+  town_res = get_town_opportunity(t1_train, t1_test)
+  t1_train = town_res[[1]]
+  t1_test = town_res[[2]]
+  
+  bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
+  t1_train = bedroom_res[[1]]
+  t1_test = bedroom_res[[2]]
+  
+  listing_res = get_listing_outliers(t1_train, t1_test)  
+  t1_train = listing_res[[1]]
+  t1_test = listing_res[[2]]
+  
+  t1_train$created = NULL
+  t1_test$created = NULL
+  
+  train_y_train = get_train_y(t1_train)
+  train_y_val = get_train_y(t1_test)
+  
+  t1_train = xgb(t1_train, 1)
+  t1_test = xgb(t1_test, 1)
+
+  pred_df_val = run_xgb(t1_train, train_y_train, t1_test, train_y_val)
+  
   train_y_val[train_y_val == 0] = "low"
   train_y_val[train_y_val == 1] = "medium"
   train_y_val[train_y_val == 2] = "high"
   train_y_val = as.factor(train_y_val)
   
-  train_xgb_train$created = NULL
-  train_xgb_val$created = NULL
-  
-  train_xgb_train = xgb(train_xgb_train, 1)
-  train_xgb_val = xgb(train_xgb_val, 1)
-
-  pred_df_val = run_xgb(train_xgb_train, train_y_train, train_xgb_val)
   print(MultiLogLoss(y_true = train_y_val, y_pred = as.matrix(pred_df_val[,c("high", "low", "medium")])))
   
   return(pred_df_val[, c("high", "low", "medium")])
@@ -1339,15 +1397,15 @@ get_train_y = function(t1){
   return(train_y)  
 }
 
-run_xgb = function(train_xgb, train_y, test_xgb){
+run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
   
-  # model = xgboost(data = as.matrix(train_xgb), 
-  #                 label = train_y,
+  # model = xgboost(data = as.matrix(t1_train),
+  #                 label = train_y_train,
   #                 eta = 0.1,
   #                 gamma = 1,
-  #                 max_depth = 4, 
-  #                 nround=3000, 
-  #                 subsample = 0.7,
+  #                 max_depth = 4,
+  #                 nround=2000,
+  #                 subsample = 0.9,
   #                 colsample_bytree = 0.7,
   #                 seed = 100,
   #                 eval_metric = "mlogloss",
@@ -1361,7 +1419,7 @@ run_xgb = function(train_xgb, train_y, test_xgb){
   # # importance_matrix = xgb.importance(names, model = model)
   # # xgb.plot.importance(importance_matrix[1:50,])
   # 
-  # pred = predict(model,  as.matrix(test_xgb), missing=NaN)
+  # pred = predict(model, as.matrix(test_xgb), missing=NaN)
   # 
   # pred_matrix = matrix(pred, nrow = nrow(test_xgb), byrow = TRUE)
   # 
@@ -1370,41 +1428,42 @@ run_xgb = function(train_xgb, train_y, test_xgb){
   # 
   # pred_df = as.data.frame(pred_submission)
   
-  
   xgb_params = list(
     booster="gbtree",
     nthread=13,
-    colsample_bytree= 0.5,
+    colsample_bytree = 0.5,
     subsample = 0.7,
-    eta = 0.01,
-    objective= 'multi:softprob',
-    max_depth= 4,
-    min_child_weight= 1,
+    eta = 0.07,
+    objective = 'multi:softprob',
+    max_depth = 6,
+    min_child_weight = 1,
     eval_metric= "mlogloss",
     num_class = 3,
     seed = 100
   )
-
   
-  train_xgb_train[is.na(train_xgb_train)] = 0
-  train_xgb_val[is.na(train_xgb_val)] = 0
+  # t1_train[is.na(t1_train)] = 0
+  # t1_test[is.na(t1_test)] = 0
 
   # t1_sparse <- Matrix(as.matrix(train_xgb_train), sparse=TRUE) #Necessary?
   # s1_sparse <- Matrix(as.matrix(train_xgb_val), sparse=TRUE)
-  
-  dtrain = xgb.DMatrix(as.matrix(train_xgb_train), label=train_y_train)
-  dval = xgb.DMatrix(as.matrix(train_xgb_val), label=train_y_val)
-  
+
+  dtrain = xgb.DMatrix(as.matrix(t1_train), label=train_y_train)
+  dval = xgb.DMatrix(as.matrix(t1_test), label=train_y_val)
+
   #perform training
   gbdt = xgb.train(params = xgb_params,
                    data = dtrain,
-                   nrounds =2000,
+                   nrounds = 2000,
                    watchlist = list(train = dtrain, val=dval),
                    print_every_n = 25,
                    early_stopping_rounds=50)
+
+  pred_df =  (as.data.frame(matrix(predict(gbdt,dval), nrow=dim(t1_test), byrow=TRUE)))
   
-  pred_df =  (as.data.frame(matrix(predict(gbdt,dtest), nrow=dim(test), byrow=TRUE)))
-  
+  pred_df = cbind(t1_test$listing_id, pred_df)
+  colnames(pred_df) = c("listing_id", "low", "medium", "high")
+
   return(pred_df)
   
 }
