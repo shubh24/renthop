@@ -232,9 +232,11 @@ gbm_h2o = function(t1, t2){
                 ,stopping_rounds = 5
                 ,stopping_metric = "logloss"
                 ,stopping_tolerance = 1e-4
-                ,seed=321)
+                ,seed=100)
 
   print(as.data.frame(h2o.varimp(gbm1)))
+  # print(h2o.performance(model = gbm1, newdata = test_h2o))
+  
   res = as.data.frame(predict(gbm1, test_h2o))
 
   return(res)
@@ -320,7 +322,7 @@ generate_df = function(df, train_flag){
     }
     
     t1$total_days = (t1$month - 4.0)*30 + t1$mday +  t1$hour/25.0
-    t1$slope_listing_days = (t1$listing_id - min(t1$listing_id))/t1$total_days
+    # t1$slope_listing_days = (t1$listing_id - min(t1$listing_id))/t1$total_days
     t1$month = NULL
     
     # t1$caps_count = sapply(regmatches(as.vector(t1$description), gregexpr("[A-Z]", as.vector(t1$description), perl=TRUE)), length)
@@ -359,8 +361,8 @@ generate_df = function(df, train_flag){
     
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
     t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
-    t1$street_number_provided = as.factor(grepl("\\d", t1$display_address))
-    t1$phone_number_provided = as.factor(grepl("\\d\\d\\d-\\d\\d\\d-\\d\\d\\d\\d", df$description))
+    # t1$street_number_provided = as.factor(grepl("\\d", t1$display_address))
+    # t1$phone_number_provided = as.factor(grepl("\\d\\d\\d-\\d\\d\\d-\\d\\d\\d\\d", df$description))
 
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
@@ -1119,7 +1121,7 @@ get_listing_outliers = function(t1, t2){
   colnames(median_listing) = c("yday", "median_listing")
   listing_df = merge(listing_df, median_listing, by = "yday")
   
-  listing_df$outlier = (listing_df$listing_id - listing_df$median_listing)/listin_df$median_listing
+  listing_df$outlier = (listing_df$listing_id - listing_df$median_listing)/listing_df$median_listing
   listing_df$median_listing = NULL
   
   t1 = merge(t1, listing_df[, c("listing_id", "outlier")], by = "listing_id")
@@ -1130,7 +1132,7 @@ get_listing_outliers = function(t1, t2){
 }
 
 validate_gbm = function(t1){
-  set.seed(101) 
+  set.seed(1001) 
   
   t1$street_int_id = as.integer(as.factor(t1$display_address))
   
@@ -1473,8 +1475,8 @@ street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
 
 street_address_df = merge(street_address_df, street_count_df, by = "street_int_id")
   
-t1 = merge(t1, street_address_df[, c("listing_id", "street_count")], by = "listing_id")
-t2 = merge(t2, street_address_df[, c("listing_id", "street_count")], by = "listing_id")
+t1 = merge(t1, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+t2 = merge(t2, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
 
 # t1$street_int_id = NULL
 t1$display_address = NULL
@@ -1489,6 +1491,11 @@ t2 = left_join(t2, manager_int_df[, c("listing_id", "manager_int_id")], by = "li
 t1 = get_last_active(t1)
 t2 = get_last_active(t2)
 
+time_res = get_time_scores(t1, t2)
+t1 = time_res[[1]]
+t2 = time_res[[2]]
+
+
 nbd_manager_res = get_specialized_mangers(t1, t2)
 t1 = nbd_manager_res[[1]]
 t2 = nbd_manager_res[[2]]
@@ -1497,9 +1504,9 @@ street_res = get_street_opportunity(t1, t2)
 t1 = street_res[[1]]
 t2 = street_res[[2]]
 
-multi_town_res = get_multi_town(t1, t2)
-t1 = multi_town_res[[1]]
-t2 = multi_town_res[[2]]
+# multi_town_res = get_multi_town(t1, t2)
+# t1 = multi_town_res[[1]]
+# t2 = multi_town_res[[2]]
 
 mtb_opp_res = get_manager_town_opp(t1, t2)
 t1 = mtb_opp_res[[1]]
@@ -1512,7 +1519,7 @@ t2 = mb_count_res[[2]]
 ms_count_res = get_manager_address_count(t1, t2)
 t1 = ms_count_res[[1]]
 t2 = ms_count_res[[2]]
-
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
 manager_res = get_manager_scores(t1, t2)
 t1 = manager_res[[1]]
 t2 = manager_res[[2]]
@@ -1542,7 +1549,7 @@ t2$building_id = NULL
 
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_29.csv", row.names = FALSE)
+write.csv(pred, "gbm_30.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
