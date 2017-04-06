@@ -999,7 +999,9 @@ get_bulk_listing = function(t1, t2){
     hour_df = merge(hour_df, hour_serial_df, by = c("manager_id", "hour_serial"))
     
     t1 = merge(t1, hour_df[, c("listing_id", "hour_manager_freq")], by = "listing_id")
+    t1$hour_manager_freq = t1$hour_manager_freq/t1$hour_freq
     t2 = merge(t2, hour_df[, c("listing_id", "hour_manager_freq")], by = "listing_id")
+    t2$hour_manager_freq = t2$hour_manager_freq/t2$hour_freq
     
     return(list(t1, t2))
 }
@@ -1025,46 +1027,48 @@ get_hour_freq = function(t1, t2){
 
 get_time_scores = function(t1, t2){
 
-  # min_created = min(min(t1$created), min(t2$created))
-  # 
-  # t1$hour_serial = as.integer(difftime(t1$created, min_created, units = "days"))
-  # t2$hour_serial = as.integer(difftime(t2$created, min_created, units = "days"))
-  # 
-  # time_nbd_df = rbind(t1[, c("listing_id", "created", "neighborhood", "bedrooms", "price", "hour_serial")], t2[, c("listing_id", "created",  "neighborhood", "bedrooms", "price", "hour_serial")])
-  # 
-  # hour_median_price = aggregate(price ~ neighborhood + bedrooms + hour_serial, data = time_nbd_df, FUN = median)
-  # colnames(hour_median_price)[colnames(hour_median_price) == "price"] = c("hour_median_price")
-  # 
-  # t1 = merge(t1, hour_median_price, by = c("neighborhood", "bedrooms", "hour_serial"))
-  # t2 = merge(t2, hour_median_price, by = c("neighborhood", "bedrooms", "hour_serial"))
-  # 
-  # t1$hour_opportunity = (t1$price - t1$hour_median_price)/t1$hour_median_price
-  # t1$hour_median_price = NULL
-  # t2$hour_opportunity = (t2$price - t2$hour_median_price)/t2$hour_median_price
-  # t2$hour_median_price = NULL
+  min_created = min(min(t1$created), min(t2$created))
+
+  t1$day_serial = as.integer(difftime(t1$created, min_created, units = "days"))
+  t2$day_serial = as.integer(difftime(t2$created, min_created, units = "days"))
+
+  time_nbd_df = rbind(t1[, c("listing_id", "created", "neighborhood", "bedrooms", "price", "day_serial")], t2[, c("listing_id", "created",  "neighborhood", "bedrooms", "price", "day_serial")])
+
+  day_median_price = aggregate(price ~ neighborhood + bedrooms + day_serial, data = time_nbd_df, FUN = median)
+  colnames(day_median_price)[colnames(day_median_price) == "price"] = "day_median_price"
+
+  t1 = merge(t1, day_median_price, by = c("neighborhood", "bedrooms", "day_serial"))
+  t2 = merge(t2, day_median_price, by = c("neighborhood", "bedrooms", "day_serial"))
+
+  t1$day_opportunity = (t1$price - t1$day_median_price)/t1$day_median_price
+  t1$day_median_price = NULL
+  t1$day_serial = NULL
+  t2$day_opportunity = (t2$price - t2$day_median_price)/t2$day_median_price
+  t2$day_median_price = NULL
+  t2$day_serial = NULL
   
-  t1$hour = lubridate::hour(t1$created)
-  t2$hour = lubridate::hour(t2$created)
-  
-  hour_df = t1[, c("hour", "interest_level")]
-  hour_df = cbind(hour_df, model.matrix( ~ interest_level - 1, data = hour_df))
-  
-  hour_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ hour, data = hour_df, FUN = sum)
-  hour_agg$hour_count = rowSums(hour_agg[,c(2:4)])
-  
-  hour_agg[, c(2:4)] = hour_agg[, c(2:4)]/hour_agg$hour_count
-  hour_agg$hour_score = 2*hour_agg$interest_levelhigh + hour_agg$interest_levelmedium
-  hour_agg$interest_levelhigh = NULL
-  hour_agg$interest_levelmedium = NULL
-  hour_agg$interest_levellow = NULL
-  hour_agg$hour_count = NULL
-  hour_agg$interest_level = NULL
-  
-  t1 = merge(t1, hour_agg, by = "hour")
-  t2 = merge(t2, hour_agg, by = "hour")
-  
-  t1$hour = NULL
-  t2$hour = NULL
+  # t1$hour = lubridate::hour(t1$created)
+  # t2$hour = lubridate::hour(t2$created)
+  #
+  # hour_df = t1[, c("hour", "interest_level")]
+  # hour_df = cbind(hour_df, model.matrix( ~ interest_level - 1, data = hour_df))
+  #
+  # hour_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ hour, data = hour_df, FUN = sum)
+  # hour_agg$hour_count = rowSums(hour_agg[,c(2:4)])
+  #
+  # hour_agg[, c(2:4)] = hour_agg[, c(2:4)]/hour_agg$hour_count
+  # hour_agg$hour_score = 2*hour_agg$interest_levelhigh + hour_agg$interest_levelmedium
+  # hour_agg$interest_levelhigh = NULL
+  # hour_agg$interest_levelmedium = NULL
+  # hour_agg$interest_levellow = NULL
+  # hour_agg$hour_count = NULL
+  # hour_agg$interest_level = NULL
+  #
+  # t1 = merge(t1, hour_agg, by = "hour")
+  # t2 = merge(t2, hour_agg, by = "hour")
+  #
+  # t1$hour = NULL
+  # t2$hour = NULL
   
   return (list(t1, t2))
 }
@@ -1302,6 +1306,12 @@ set_xgb = function(t1, t2){
   t1$street_type = NULL
   t2$street_type = NULL
   
+  t1$town = NULL
+  t2$town = NULL
+  
+  t1$wday = NULL
+  t2$wday = NULL
+  
   t1_y = get_train_y(t1)
 
   t1 = xgb(t1, 1)
@@ -1318,6 +1328,7 @@ set_xgb = function(t1, t2){
     min_child_weight = 2,
     eval_metric= "mlogloss",
     num_class = 3,
+    gamma = 5,
     max_delta_step = 1,
     seed = 100
   )
@@ -1328,7 +1339,7 @@ set_xgb = function(t1, t2){
   #perform training
   gbdt = xgb.train(params = xgb_params,
                    data = dtrain,
-                   nrounds = 450,
+                   nrounds = 900,
                    watchlist = list(train = dtrain),
                    print_every_n = 25,
                    early_stopping_rounds=50)
@@ -1349,7 +1360,7 @@ set_xgb = function(t1, t2){
 }
 
 validate_xgb = function(t1){
-  set.seed(1001) 
+  set.seed(101) 
   
   t1$street_int_id = as.integer(as.factor(t1$display_address))
 
@@ -1384,31 +1395,27 @@ validate_xgb = function(t1){
   mtb_opp_res = get_manager_town_opp(t1_train, t1_test)
   t1_train = mtb_opp_res[[1]]
   t1_test = mtb_opp_res[[2]]
-#   
-#   mb_count_res = get_manager_building_count(t1_train, t1_test)
-#   t1_train = mb_count_res[[1]]
-#   t1_test = mb_count_res[[2]]
-#   
-#   ms_count_res = get_manager_address_count(t1_train, t1_test)
-#   t1_train = ms_count_res[[1]]
-#   t1_test = ms_count_res[[2]]
-  
-  manager_res = get_manager_scores(t1_train, t1_test)
-  t1_train = manager_res[[1]]
-  t1_test = manager_res[[2]]
+
+  mb_count_res = get_manager_building_count(t1_train, t1_test)
+  t1_train = mb_count_res[[1]]
+  t1_test = mb_count_res[[2]]
   
   hour_res = get_hour_freq(t1_train, t1_test)
   t1_train = hour_res[[1]]
   t1_test = hour_res[[2]]
-   
+
+  bulk_res = get_bulk_listing(t1_train, t1_test)
+  t1_train = bulk_res[[1]]
+  t1_test = bulk_res[[2]]
+  
+  manager_res = get_manager_scores(t1_train, t1_test)
+  t1_train = manager_res[[1]]
+  t1_test = manager_res[[2]]
+
   nbd_res = get_nbd_scores(t1_train, t1_test)
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
-  # 
-  # town_res = get_town_opportunity(t1_train, t1_test)
-  # t1_train = town_res[[1]]
-  # t1_test = town_res[[2]]
-  # 
+
   # bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
   # t1_train = bedroom_res[[1]]
   # t1_test = bedroom_res[[2]]
@@ -1426,8 +1433,17 @@ validate_xgb = function(t1){
   t1_train$manager_id = NULL
   t1_test$manager_id = NULL
   
+  t1_train$town = NULL
+  t1_test$town = NULL
+
+  t1_train$street_type = NULL
+  t1_test$street_type = NULL
+  
   t1_train$created = NULL
   t1_test$created = NULL
+  
+  t1_train$wday = NULL
+  t1_test$wday = NULL
   
   train_y_train = get_train_y(t1_train)
   train_y_val = get_train_y(t1_test)
@@ -1509,7 +1525,7 @@ run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
     nthread=13,
     colsample_bytree = 0.5,
     subsample = 0.7,
-    eta = 0.075,
+    eta = 0.05,
     objective = 'multi:softprob',
     max_depth = 6,
     min_child_weight = 2,
@@ -1531,10 +1547,10 @@ run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
                    print_every_n = 25,
                    early_stopping_rounds=50)
 
-  # model <- xgb.dump(gbdt, with_stats = T)
-  # names <- dimnames(data.matrix(t1_train[,-1]))[[2]]
-  # importance_matrix <- xgb.importance(names, model = gbdt)
-  # xgb.plot.importance(importance_matrix)
+  model <- xgb.dump(gbdt, with_stats = T)
+  names <- dimnames(data.matrix(t1_train[,-1]))[[2]]
+  importance_matrix <- xgb.importance(names, model = gbdt)
+  xgb.plot.importance(importance_matrix)
   
   pred_df =  (as.data.frame(matrix(predict(gbdt,dval), nrow=dim(t1_test), byrow=TRUE)))
   
