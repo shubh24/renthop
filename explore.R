@@ -991,18 +991,21 @@ get_bulk_listing = function(t1, t2){
     hour_df = rbind(t1[, c("listing_id", "created", "manager_id")], t2[, c("listing_id", "created", "manager_id")])
     hour_df$hour_serial = as.integer(difftime(hour_df$created, min(hour_df$created), units = "hours"))
     
-    # hour_serial_df = as.data.frame(table(hour_df$hour_serial))
     hour_df$dummy = 1
     hour_serial_df = aggregate(dummy ~ hour_serial + manager_id, data = hour_df, FUN = sum)
+    hour_freq_df = aggregate(dummy ~ hour_serial, data = hour_df, FUN = sum)
+    
     colnames(hour_serial_df) = c("hour_serial", "manager_id", "hour_manager_freq")
+    colnames(hour_freq_df) = c("hour_serial", "hour_freq")
     
-    hour_df = merge(hour_df, hour_serial_df, by = c("manager_id", "hour_serial"))
+    hour_serial_df = merge(hour_serial_df, hour_freq_df, by = "hour_serial")
+    hour_serial_df$hour_manager_ratio = hour_serial_df$hour_manager_freq/hour_serial_df$hour_freq
+
+    hour_df = merge(hour_df, hour_serial_df[, c("manager_id", "hour_serial", "hour_manager_ratio")], by = c("manager_id", "hour_serial"))
     
-    t1 = merge(t1, hour_df[, c("listing_id", "hour_manager_freq")], by = "listing_id")
-    t1$hour_manager_freq = t1$hour_manager_freq/t1$hour_freq
-    t2 = merge(t2, hour_df[, c("listing_id", "hour_manager_freq")], by = "listing_id")
-    t2$hour_manager_freq = t2$hour_manager_freq/t2$hour_freq
-    
+    t1 = merge(t1, hour_df[, c("listing_id", "hour_manager_ratio")], by = "listing_id")
+    t2 = merge(t2, hour_df[, c("listing_id", "hour_manager_ratio")], by = "listing_id")
+
     return(list(t1, t2))
 }
 
@@ -1322,13 +1325,12 @@ set_xgb = function(t1, t2){
     nthread=13,
     colsample_bytree = 0.5,
     subsample = 0.7,
-    eta = 0.075,
+    eta = 0.05,
     objective = 'multi:softprob',
     max_depth = 6,
     min_child_weight = 2,
     eval_metric= "mlogloss",
     num_class = 3,
-    gamma = 5,
     max_delta_step = 1,
     seed = 100
   )
@@ -1339,7 +1341,7 @@ set_xgb = function(t1, t2){
   #perform training
   gbdt = xgb.train(params = xgb_params,
                    data = dtrain,
-                   nrounds = 900,
+                   nrounds = 500,
                    watchlist = list(train = dtrain),
                    print_every_n = 25,
                    early_stopping_rounds=50)
@@ -1353,7 +1355,7 @@ set_xgb = function(t1, t2){
   
   pred_df = cbind(t2$listing_id, pred_df)
   colnames(pred_df) = c("listing_id", "low", "medium", "high")
-  write.csv(pred_df, "xgb_2.csv", row.names = FALSE)
+  write.csv(pred_df, "xgb_3.csv", row.names = FALSE)
   
   return(pred_df)
   
@@ -1404,9 +1406,9 @@ validate_xgb = function(t1){
   t1_train = hour_res[[1]]
   t1_test = hour_res[[2]]
 
-  bulk_res = get_bulk_listing(t1_train, t1_test)
-  t1_train = bulk_res[[1]]
-  t1_test = bulk_res[[2]]
+  # bulk_res = get_bulk_listing(t1_train, t1_test)
+  # t1_train = bulk_res[[1]]
+  # t1_test = bulk_res[[2]]
   
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
