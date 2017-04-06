@@ -614,6 +614,7 @@ get_manager_scores = function(t1, t2){
 
   global_high_medium = (sum(manager_df$interest_levelhigh) + sum(manager_df$interest_levelmedium))/nrow(t1)
   global_high = sum(manager_df$interest_levelhigh)/nrow(t1)
+  global_medium = sum(manager_df$interest_levelmedium)/nrow(t1)
   
   manager_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ manager_id, data = manager_df, FUN = sum)
   manager_agg$manager_count = rowSums(manager_agg[,c(2:4)])
@@ -628,35 +629,35 @@ get_manager_scores = function(t1, t2){
   manager_price = aggregate(price ~ manager_id + bedrooms, data = manager_df, FUN = median)
   colnames(manager_price) = c("manager_id", "bedrooms", "manager_median_price")
 
-  manager_df$dummy = 1
-  manager_expertise = aggregate(dummy ~ manager_id + neighborhood, data = manager_df, FUN = sum)
-  manager_expertise_df = data.frame()
-    
-  for(i in 1:length(levels(manager_expertise$manager_id))){
-    specific_manager_expertise = manager_expertise[manager_expertise$manager_id == levels(manager_expertise$manager_id)[i],]
-    expert_neighborhoods = as.vector(specific_manager_expertise$neighborhood[with(specific_manager_expertise, order(-dummy))][1:3])
-    
-    manager_expertise_df = rbind(manager_expertise_df, as.data.frame(cbind(as.character(levels(manager_expertise$manager_id)[i]), expert_neighborhoods[1], expert_neighborhoods[2], expert_neighborhoods[3]), stringsAsFactors = FALSE))  
-    
-  }
-  colnames(manager_expertise_df) = c("manager_id", "nbd1","nbd2","nbd3")
-  
-  check_expert_nbd = merge(manager_df[, c("manager_id", "neighborhood")], manager_expertise_df, by = "manager_id")
-  check_expert_nbd$neighborhood = as.character(check_expert_nbd$neighborhood)
-  
-  tf = c()
-  check_expert_nbd$expert = apply(check_expert_nbd, 1, function(x){
-
-    if (length(intersect(x[["neighborhood"]], c(x[["nbd1"]], x[["nbd2"]], x[["nbd3"]]))) > 0){
-      tf = c(tf, TRUE)
-    }
-    else{tf = c(tf, FALSE)}
-
-    return (tf)
-  })
-  check_expert_nbd$nbd1 = NULL
-  check_expert_nbd$nbd2 = NULL
-  check_expert_nbd$nbd3 = NULL
+  # manager_df$dummy = 1
+  # manager_expertise = aggregate(dummy ~ manager_id + neighborhood, data = manager_df, FUN = sum)
+  # manager_expertise_df = data.frame()
+  #   
+  # for(i in 1:length(levels(manager_expertise$manager_id))){
+  #   specific_manager_expertise = manager_expertise[manager_expertise$manager_id == levels(manager_expertise$manager_id)[i],]
+  #   expert_neighborhoods = as.vector(specific_manager_expertise$neighborhood[with(specific_manager_expertise, order(-dummy))][1:3])
+  #   
+  #   manager_expertise_df = rbind(manager_expertise_df, as.data.frame(cbind(as.character(levels(manager_expertise$manager_id)[i]), expert_neighborhoods[1], expert_neighborhoods[2], expert_neighborhoods[3]), stringsAsFactors = FALSE))  
+  #   
+  # }
+  # colnames(manager_expertise_df) = c("manager_id", "nbd1","nbd2","nbd3")
+  # 
+  # check_expert_nbd = merge(manager_df[, c("manager_id", "neighborhood")], manager_expertise_df, by = "manager_id")
+  # check_expert_nbd$neighborhood = as.character(check_expert_nbd$neighborhood)
+  # 
+  # tf = c()
+  # check_expert_nbd$expert = apply(check_expert_nbd, 1, function(x){
+  # 
+  #   if (length(intersect(x[["neighborhood"]], c(x[["nbd1"]], x[["nbd2"]], x[["nbd3"]]))) > 0){
+  #     tf = c(tf, TRUE)
+  #   }
+  #   else{tf = c(tf, FALSE)}
+  # 
+  #   return (tf)
+  # })
+  # check_expert_nbd$nbd1 = NULL
+  # check_expert_nbd$nbd2 = NULL
+  # check_expert_nbd$nbd3 = NULL
   
   # manager_agg$popular = as.factor(manager_agg$count > 80)
   # manager_agg$premium = as.factor(manager_agg$interest_levelhigh > 30)
@@ -664,7 +665,7 @@ get_manager_scores = function(t1, t2){
 
   manager_agg[, c(2:4)] = manager_agg[, c(2:4)]/manager_agg$manager_count
 
-  manager_agg$high_medium_score = manager_agg$lambda*(manager_agg$interest_levelhigh+manager_agg$interest_levelmedium) + (1-manager_agg$lambda)*global_high_medium
+  # manager_agg$high_medium_score = manager_agg$lambda*(manager_agg$interest_levelhigh+manager_agg$interest_levelmedium) + (1-manager_agg$lambda)*global_high_medium
   # manager_agg$medium_score = manager_agg$lambda*manager_agg$interest_levelmedium + (1-manager_agg$lambda)*global_medium
   manager_agg$high_score = manager_agg$lambda*manager_agg$interest_levelhigh + (1-manager_agg$lambda)*global_high
   manager_agg$lambda = NULL
@@ -678,7 +679,7 @@ get_manager_scores = function(t1, t2){
 
   t1 = merge(t1, manager_agg, by = "manager_id")
   t1 = merge(t1, manager_price, by = c("manager_id", "bedrooms"))
-  t1 = unique(left_join(t1, check_expert_nbd, by = c("manager_id", "neighborhood")))
+  # t1 = unique(left_join(t1, check_expert_nbd, by = c("manager_id", "neighborhood")))
   # t1$price_ratio_manager_median = t1$price/t1$manager_median_price
   
   t1$manager_opportunity = (t1$price - t1$manager_median_price)/t1$manager_median_price
@@ -689,7 +690,7 @@ get_manager_scores = function(t1, t2){
 
   t2 = left_join(t2, as.data.table(manager_agg), by = "manager_id")
   t2 = left_join(t2, as.data.table(manager_price), by = c("manager_id", "bedrooms"), copy = TRUE)
-  t2 = unique(left_join(t2, check_expert_nbd, by = c("manager_id", "neighborhood"), copy = TRUE))
+  # t2 = unique(left_join(t2, check_expert_nbd, by = c("manager_id", "neighborhood"), copy = TRUE))
   
   t2_manager_table = as.data.frame(table(t2$manager_id))
   colnames(t2_manager_table) = c("manager_id", "na_manager_count")
@@ -702,13 +703,13 @@ get_manager_scores = function(t1, t2){
 
   t2$manager_opportunity = (t2$price - t2$manager_median_price)/t2$manager_median_price
   
-    # t2$manager_opportunity_pr = (t2$price_per_room - t2$manager_median_price)/t2$manager_median_price
+  # t2$manager_opportunity_pr = (t2$price_per_room - t2$manager_median_price)/t2$manager_median_price
   t2$manager_median_price = NULL
   
   t2$manager_score[is.na(t2$manager_score)] = median(t2$manager_score, na.rm = TRUE) #Leave it as NA and try!
   t2$high_score[is.na(t2$high_score)] = global_high
   # t2$medium_score[is.na(t2$medium_score)] = global_medium #Leave it as NA and try!
-  t2$high_medium_score[is.na(t2$high_medium_score)] = global_high_medium
+  # t2$high_medium_score[is.na(t2$high_medium_score)] = global_high_medium
   
   t2$manager_id = NULL
 
@@ -752,7 +753,7 @@ get_building_scores = function(t1, t2){
 
   t1 = merge(t1, building_agg, by = "building_id")
   # t1$building_score[t1$zero_building_id == TRUE] = NA
-  t1$building_id = NULL
+  # t1$building_id = NULL
 
   t2 = left_join(t2, as.data.table(building_agg), by = "building_id")
   t2$building_count[is.na(t2$building_count)] = 1
@@ -760,7 +761,7 @@ get_building_scores = function(t1, t2){
   t2$building_high_medium_score[is.na(t2$building_high_medium_score)] = global_high_medium
   
   # t2$building_score[is.na(t2$building_score)] = median(t2$building_score, na.rm = TRUE)
-  t2$building_id = NULL
+  # t2$building_id = NULL
   
   # building_df = t1[, c("building_id", "bedrooms", "price")]
   # building_price = aggregate(price ~ building_id + bedrooms, data = building_df, FUN = median )
@@ -1233,17 +1234,130 @@ validate_gbm = function(t1){
   
 }
 
+set_xgb = function(t1, t2){
+  
+  street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
+  
+  street_address_df$street_int_id = as.integer(as.factor(street_address_df$display_address))
+  street_count_df = as.data.frame(table(as.factor(street_address_df$street_int_id)))
+  colnames(street_count_df) = c("street_int_id", "street_count")
+  street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
+  
+  street_address_df = merge(street_address_df, street_count_df, by = "street_int_id")
+  
+  t1 = merge(t1, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+  t2 = merge(t2, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+  
+  t1$display_address = NULL
+  t2$display_address = NULL
+  
+  manager_int_df = rbind(t1[, c("listing_id", "manager_id")], t2[, c("listing_id", "manager_id")])
+  manager_int_df$manager_int_id = as.integer(as.factor(manager_int_df$manager_id))
+  t1 = left_join(t1, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+  t2 = left_join(t2, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+  
+  # t1 = get_last_active(t1)
+  # t2 = get_last_active(t2)
+  
+  nbd_manager_res = get_specialized_mangers(t1, t2)
+  t1 = nbd_manager_res[[1]]
+  t2 = nbd_manager_res[[2]]
+  
+  street_res = get_street_opportunity(t1, t2)
+  t1 = street_res[[1]]
+  t2 = street_res[[2]]
+  
+  mtb_opp_res = get_manager_town_opp(t1, t2)
+  t1 = mtb_opp_res[[1]]
+  t2 = mtb_opp_res[[2]]
+  
+  manager_res = get_manager_scores(t1, t2)
+  t1 = manager_res[[1]]
+  t2 = manager_res[[2]]
+  
+  hour_res = get_hour_freq(t1, t2)
+  t1 = hour_res[[1]]
+  t2 = hour_res[[2]]
+  
+  nbd_res = get_nbd_scores(t1, t2)
+  t1 = nbd_res[[1]]
+  t2 = nbd_res[[2]]
+  
+  listing_res = get_listing_outliers(t1, t2) 
+  t1 = listing_res[[1]]
+  t2 = listing_res[[2]]
+  
+  t1$neighborhood = NULL
+  t2$neighborhood = NULL
+  
+  t1$building_id = NULL
+  t2$building_id = NULL
+  
+  t1$manager_id = NULL
+  t2$manager_id = NULL
+  
+  t1$created = NULL
+  t2$created = NULL
+  
+  t1$street_type = NULL
+  t2$street_type = NULL
+  
+  t1_y = get_train_y(t1)
+
+  t1 = xgb(t1, 1)
+  t2 = xgb(t2, 0)
+  
+  xgb_params = list(
+    booster="gbtree",
+    nthread=13,
+    colsample_bytree = 0.5,
+    subsample = 0.7,
+    eta = 0.075,
+    objective = 'multi:softprob',
+    max_depth = 6,
+    min_child_weight = 2,
+    eval_metric= "mlogloss",
+    num_class = 3,
+    max_delta_step = 1,
+    seed = 100
+  )
+  
+  dtrain = xgb.DMatrix(as.matrix(t1), label=t1_y)
+  dval = xgb.DMatrix(as.matrix(t2))
+  
+  #perform training
+  gbdt = xgb.train(params = xgb_params,
+                   data = dtrain,
+                   nrounds = 450,
+                   watchlist = list(train = dtrain),
+                   print_every_n = 25,
+                   early_stopping_rounds=50)
+  
+  model <- xgb.dump(gbdt, with_stats = T)
+  names <- dimnames(data.matrix(t1[,-1]))[[2]]
+  importance_matrix <- xgb.importance(names, model = gbdt)
+  xgb.plot.importance(importance_matrix)
+  
+  pred_df =  (as.data.frame(matrix(predict(gbdt,dval), nrow=dim(t2), byrow=TRUE)))
+  
+  pred_df = cbind(t2$listing_id, pred_df)
+  colnames(pred_df) = c("listing_id", "low", "medium", "high")
+  write.csv(pred_df, "xgb_2.csv", row.names = FALSE)
+  
+  return(pred_df)
+  
+}
+
 validate_xgb = function(t1){
   set.seed(1001) 
   
   t1$street_int_id = as.integer(as.factor(t1$display_address))
-  
+
   street_count_df = as.data.frame(table(as.factor(t1$street_int_id)))
   colnames(street_count_df) = c("street_int_id", "street_count")
   street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
-  
+
   t1 = merge(t1, street_count_df, by = "street_int_id")
-  # t1$street_int_id = NULL
   t1$display_address = NULL
   
   t1$manager_int_id = as.integer(as.factor(t1$manager_id))
@@ -1252,50 +1366,32 @@ validate_xgb = function(t1){
   t1_train <- t1[sample, ]
   t1_test <- t1[-sample, ]
 
-  # gbm_tuning(t1_train, t1_test)
-  
   # t1_train = get_last_active(t1_train)
   # t1_test = get_last_active(t1_test)
-  
-  # building_res = get_building_scores(t1_train, t1_test)
-  # t1_train = building_res[[1]]
-  # t1_test = building_res[[2]]
-  
-  time_res = get_time_scores(t1_train, t1_test)
-  t1_train = time_res[[1]]
-  t1_test = time_res[[2]]
-  
-  # town_res = get_town_scores(t1_train, t1_test)
-  # t1_train = town_res[[1]]
-  # t1_test = town_res[[2]]
-  
+ 
+  # time_res = get_time_scores(t1_train, t1_test)
+  # t1_train = time_res[[1]]
+  # t1_test = time_res[[2]]
+   
   nbd_manager_res = get_specialized_mangers(t1_train, t1_test) #Manager nbd count
   t1_train = nbd_manager_res[[1]]
   t1_test = nbd_manager_res[[2]]
-  
-  # bulk_res = get_bulk_listing(t1_train, t1_test)
-  # t1_train = bulk_res[[1]]
-  # t1_test = bulk_res[[2]]
-  
+ 
   street_res = get_street_opportunity(t1_train, t1_test) #JBN road in Indiranagar
   t1_train = street_res[[1]]
   t1_test = street_res[[2]]
-  
-  # multi_town_res = get_multi_town(t1_train, t1_test)
-  # t1_train = multi_town_res[[1]]
-  # t1_test = multi_town_res[[2]]
-  
+   
   mtb_opp_res = get_manager_town_opp(t1_train, t1_test)
   t1_train = mtb_opp_res[[1]]
   t1_test = mtb_opp_res[[2]]
-  
-  mb_count_res = get_manager_building_count(t1_train, t1_test)
-  t1_train = mb_count_res[[1]]
-  t1_test = mb_count_res[[2]]
-  
-  ms_count_res = get_manager_address_count(t1_train, t1_test)
-  t1_train = ms_count_res[[1]]
-  t1_test = ms_count_res[[2]]
+#   
+#   mb_count_res = get_manager_building_count(t1_train, t1_test)
+#   t1_train = mb_count_res[[1]]
+#   t1_test = mb_count_res[[2]]
+#   
+#   ms_count_res = get_manager_address_count(t1_train, t1_test)
+#   t1_train = ms_count_res[[1]]
+#   t1_test = ms_count_res[[2]]
   
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
@@ -1304,22 +1400,31 @@ validate_xgb = function(t1){
   hour_res = get_hour_freq(t1_train, t1_test)
   t1_train = hour_res[[1]]
   t1_test = hour_res[[2]]
-  
+   
   nbd_res = get_nbd_scores(t1_train, t1_test)
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
-  
-  town_res = get_town_opportunity(t1_train, t1_test)
-  t1_train = town_res[[1]]
-  t1_test = town_res[[2]]
-  
-  bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
-  t1_train = bedroom_res[[1]]
-  t1_test = bedroom_res[[2]]
-  
-  listing_res = get_listing_outliers(t1_train, t1_test)  
+  # 
+  # town_res = get_town_opportunity(t1_train, t1_test)
+  # t1_train = town_res[[1]]
+  # t1_test = town_res[[2]]
+  # 
+  # bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
+  # t1_train = bedroom_res[[1]]
+  # t1_test = bedroom_res[[2]]
+   
+  listing_res = get_listing_outliers(t1_train, t1_test)
   t1_train = listing_res[[1]]
   t1_test = listing_res[[2]]
+
+  t1_train$neighborhood = NULL
+  t1_test$neighborhood = NULL
+
+  t1_train$building_id = NULL
+  t1_test$building_id = NULL
+
+  t1_train$manager_id = NULL
+  t1_test$manager_id = NULL
   
   t1_train$created = NULL
   t1_test$created = NULL
@@ -1399,58 +1504,25 @@ get_train_y = function(t1){
 
 run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
   
-  # model = xgboost(data = as.matrix(t1_train),
-  #                 label = train_y_train,
-  #                 eta = 0.1,
-  #                 gamma = 1,
-  #                 max_depth = 4,
-  #                 nround=2000,
-  #                 subsample = 0.9,
-  #                 colsample_bytree = 0.7,
-  #                 seed = 100,
-  #                 eval_metric = "mlogloss",
-  #                 objective = "multi:softprob",
-  #                 num_class = 3,
-  #                 missing = NaN,
-  #                 silent = 1)
-  # 
-  # # library(Ckmeans.1d.dp)
-  # # names <- dimnames(data.matrix(train_xgb[,-1]))[[2]]
-  # # importance_matrix = xgb.importance(names, model = model)
-  # # xgb.plot.importance(importance_matrix[1:50,])
-  # 
-  # pred = predict(model, as.matrix(test_xgb), missing=NaN)
-  # 
-  # pred_matrix = matrix(pred, nrow = nrow(test_xgb), byrow = TRUE)
-  # 
-  # pred_submission = cbind(test_xgb$listing_id, pred_matrix)
-  # colnames(pred_submission) = c("listing_id", "low", "medium", "high")
-  # 
-  # pred_df = as.data.frame(pred_submission)
-  
   xgb_params = list(
     booster="gbtree",
     nthread=13,
     colsample_bytree = 0.5,
     subsample = 0.7,
-    eta = 0.07,
+    eta = 0.075,
     objective = 'multi:softprob',
     max_depth = 6,
-    min_child_weight = 1,
+    min_child_weight = 2,
     eval_metric= "mlogloss",
     num_class = 3,
+    max_delta_step = 1,
     seed = 100
   )
   
-  # t1_train[is.na(t1_train)] = 0
-  # t1_test[is.na(t1_test)] = 0
-
-  # t1_sparse <- Matrix(as.matrix(train_xgb_train), sparse=TRUE) #Necessary?
-  # s1_sparse <- Matrix(as.matrix(train_xgb_val), sparse=TRUE)
-
   dtrain = xgb.DMatrix(as.matrix(t1_train), label=train_y_train)
   dval = xgb.DMatrix(as.matrix(t1_test), label=train_y_val)
-
+  
+  
   #perform training
   gbdt = xgb.train(params = xgb_params,
                    data = dtrain,
@@ -1459,6 +1531,11 @@ run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
                    print_every_n = 25,
                    early_stopping_rounds=50)
 
+  # model <- xgb.dump(gbdt, with_stats = T)
+  # names <- dimnames(data.matrix(t1_train[,-1]))[[2]]
+  # importance_matrix <- xgb.importance(names, model = gbdt)
+  # xgb.plot.importance(importance_matrix)
+  
   pred_df =  (as.data.frame(matrix(predict(gbdt,dval), nrow=dim(t1_test), byrow=TRUE)))
   
   pred_df = cbind(t1_test$listing_id, pred_df)
@@ -1515,10 +1592,10 @@ t2 = generate_df(test, 0)
 rf_val = validate(t1)
 
 #Running xgboost
-train_xgb = xgb(t1, 1)
-test_xgb = xgb(t2, 0)
-train_y = get_train_y(t1)
-xgb_val = validate_xgb(train_xgb, train_y)
+# train_xgb = xgb(t1, 1)
+# test_xgb = xgb(t2, 0)
+# train_y = get_train_y(t1)
+xgb_val = validate_xgb(t1)
 pred_df = run_xgb(train_xgb, train_y, test_xgb)
 write.csv(pred_df, "xgb_submission.csv", row.names = FALSE)
 
