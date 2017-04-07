@@ -226,9 +226,9 @@ gbm_h2o = function(t1, t2){
                 ,learn_rate = 0.01
                 ,max_depth = 6
                 ,min_rows = 10
-                ,sample_rate = 0.9
+                ,sample_rate = 0.7
                 ,score_tree_interval = 10
-                ,col_sample_rate = 0.7
+                ,col_sample_rate = 0.5
                 ,stopping_rounds = 5
                 ,stopping_metric = "logloss"
                 ,stopping_tolerance = 1e-4
@@ -625,7 +625,7 @@ get_manager_scores = function(t1, t2){
   manager_df$interest_levellow = NULL
   manager_df$interest_levelmedium = NULL
   
-  manager_df = rbind(manager_df, t2[, c("manager_id", "price", "bedrooms", "neighborhood")])
+  manager_df = rbind(manager_df[,c("manager_id", "price", "bedrooms")], t2[, c("manager_id", "price", "bedrooms")])
   manager_price = aggregate(price ~ manager_id + bedrooms, data = manager_df, FUN = median)
   colnames(manager_price) = c("manager_id", "bedrooms", "manager_median_price")
 
@@ -1140,7 +1140,7 @@ get_listing_outliers = function(t1, t2){
 }
 
 validate_gbm = function(t1){
-  set.seed(1001) 
+  set.seed(101) 
   
   t1$street_int_id = as.integer(as.factor(t1$display_address))
   
@@ -1167,9 +1167,9 @@ validate_gbm = function(t1){
   # t1_train = building_res[[1]]
   # t1_test = building_res[[2]]
 
-  time_res = get_time_scores(t1_train, t1_test)
-  t1_train = time_res[[1]]
-  t1_test = time_res[[2]]
+  # time_res = get_time_scores(t1_train, t1_test)
+  # t1_train = time_res[[1]]
+  # t1_test = time_res[[2]]
   
   # town_res = get_town_scores(t1_train, t1_test)
   # t1_train = town_res[[1]]
@@ -1199,9 +1199,9 @@ validate_gbm = function(t1){
   t1_train = mb_count_res[[1]]
   t1_test = mb_count_res[[2]]
   
-  ms_count_res = get_manager_address_count(t1_train, t1_test)
-  t1_train = ms_count_res[[1]]
-  t1_test = ms_count_res[[2]]
+  # ms_count_res = get_manager_address_count(t1_train, t1_test)
+  # t1_train = ms_count_res[[1]]
+  # t1_test = ms_count_res[[2]]
 
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
@@ -1215,13 +1215,13 @@ validate_gbm = function(t1){
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
 
-  town_res = get_town_opportunity(t1_train, t1_test)
-  t1_train = town_res[[1]]
-  t1_test = town_res[[2]]
+  # town_res = get_town_opportunity(t1_train, t1_test)
+  # t1_train = town_res[[1]]
+  # t1_test = town_res[[2]]
   
-  bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
-  t1_train = bedroom_res[[1]]
-  t1_test = bedroom_res[[2]]
+  # bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
+  # t1_train = bedroom_res[[1]]
+  # t1_test = bedroom_res[[2]]
 
   listing_res = get_listing_outliers(t1_train, t1_test)  
   t1_train = listing_res[[1]]
@@ -1231,6 +1231,9 @@ validate_gbm = function(t1){
   # t1_train = renthop_res[[1]]
   # t1_test = renthop_res[[2]]
 
+  t1_train$town = NULL
+  t1_train$street_type = NULL
+  
   res_val = gbm_h2o(t1_train, t1_test)
   # dl_val = dl_h2o(t1_train, t1_test)
   
@@ -1320,42 +1323,58 @@ set_xgb = function(t1, t2){
   t1 = xgb(t1, 1)
   t2 = xgb(t2, 0)
   
-  xgb_params = list(
-    booster="gbtree",
-    nthread=13,
-    colsample_bytree = 0.5,
-    subsample = 0.7,
-    eta = 0.05,
-    objective = 'multi:softprob',
-    max_depth = 6,
-    min_child_weight = 2,
-    eval_metric= "mlogloss",
-    num_class = 3,
-    max_delta_step = 1,
-    seed = 100
-  )
-  
   dtrain = xgb.DMatrix(as.matrix(t1), label=t1_y)
   dval = xgb.DMatrix(as.matrix(t2))
+
+  num_seeds = 10
+  seeds = as.integer(runif(num_seeds,0,1000))
   
-  #perform training
-  gbdt = xgb.train(params = xgb_params,
-                   data = dtrain,
-                   nrounds = 500,
-                   watchlist = list(train = dtrain),
-                   print_every_n = 25,
-                   early_stopping_rounds=50)
+  for (i in 1:num_seeds){
+    
+    xgb_params = list(
+      booster="gbtree",
+      nthread=13,
+      colsample_bytree = 0.5,
+      subsample = 0.7,
+      eta = 0.05,
+      objective = 'multi:softprob',
+      max_depth = 6,
+      min_child_weight = 10,
+      eval_metric= "mlogloss",
+      num_class = 3,
+      max_delta_step = 2,
+      seed = seeds[i]
+    )
+    
+    #perform training
+    gbdt = xgb.train(params = xgb_params,
+                     data = dtrain,
+                     nrounds = 500,
+                     watchlist = list(train = dtrain),
+                     print_every_n = 25,
+                     early_stopping_rounds=50)
+    
+    # model <- xgb.dump(gbdt, with_stats = T)
+    # names <- dimnames(data.matrix(t1[,-1]))[[2]]
+    # importance_matrix <- xgb.importance(names, model = gbdt)
+    # xgb.plot.importance(importance_matrix)
+    
+    pred_df =  (as.data.frame(matrix(predict(gbdt,dval), nrow=dim(t2), byrow=TRUE)))
+    
+    if (i == 1){
+      sum_pred_df = pred_df
+    }      
+    else{
+      sum_pred_df = sum_pred_df + pred_df
+    }
+  }
   
-  model <- xgb.dump(gbdt, with_stats = T)
-  names <- dimnames(data.matrix(t1[,-1]))[[2]]
-  importance_matrix <- xgb.importance(names, model = gbdt)
-  xgb.plot.importance(importance_matrix)
+  sum_pred_df = sum_pred_df/num_seeds
   
-  pred_df =  (as.data.frame(matrix(predict(gbdt,dval), nrow=dim(t2), byrow=TRUE)))
+  pred_df = cbind(t2$listing_id, sum_pred_df)
   
-  pred_df = cbind(t2$listing_id, pred_df)
   colnames(pred_df) = c("listing_id", "low", "medium", "high")
-  write.csv(pred_df, "xgb_3.csv", row.names = FALSE)
+  write.csv(pred_df, "xgb_4.csv", row.names = FALSE)
   
   return(pred_df)
   
@@ -1375,7 +1394,9 @@ validate_xgb = function(t1){
   
   t1$manager_int_id = as.integer(as.factor(t1$manager_id))
   
-  sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
+  # sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
+  sample <- createDataPartition(t1$interest_level, p = .75, list = FALSE)
+  
   t1_train <- t1[sample, ]
   t1_test <- t1[-sample, ]
 
@@ -1446,7 +1467,7 @@ validate_xgb = function(t1){
   
   t1_train$wday = NULL
   t1_test$wday = NULL
-  
+
   train_y_train = get_train_y(t1_train)
   train_y_val = get_train_y(t1_test)
   
@@ -1522,41 +1543,57 @@ get_train_y = function(t1){
 
 run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
   
-  xgb_params = list(
-    booster="gbtree",
-    nthread=13,
-    colsample_bytree = 0.5,
-    subsample = 0.7,
-    eta = 0.05,
-    objective = 'multi:softprob',
-    max_depth = 6,
-    min_child_weight = 2,
-    eval_metric= "mlogloss",
-    num_class = 3,
-    max_delta_step = 1,
-    seed = 100
-  )
-  
-  dtrain = xgb.DMatrix(as.matrix(t1_train), label=train_y_train)
-  dval = xgb.DMatrix(as.matrix(t1_test), label=train_y_val)
-  
-  
-  #perform training
-  gbdt = xgb.train(params = xgb_params,
-                   data = dtrain,
-                   nrounds = 2000,
-                   watchlist = list(train = dtrain, val=dval),
-                   print_every_n = 25,
-                   early_stopping_rounds=50)
+  num_seeds = 1
+  seeds = as.integer(runif(num_seeds,0,1000))
 
-  model <- xgb.dump(gbdt, with_stats = T)
-  names <- dimnames(data.matrix(t1_train[,-1]))[[2]]
-  importance_matrix <- xgb.importance(names, model = gbdt)
-  xgb.plot.importance(importance_matrix)
+  for (i in 1:num_seeds){
+    
+      seed = seeds[i]
+      
+      xgb_params = list(
+        booster="gbtree",
+        nthread=13,
+        colsample_bytree = 1,
+        subsample = 1,
+        eta = 0.05,
+        objective = 'multi:softprob',
+        max_depth = 6,
+        min_child_weight = 10,
+        eval_metric= "mlogloss",
+        num_class = 3,
+        max_delta_step = 2,
+        seed = seed
+      )
+      
+      dtrain = xgb.DMatrix(as.matrix(t1_train), label=train_y_train)
+      dval = xgb.DMatrix(as.matrix(t1_test), label=train_y_val)
+      
+      #perform training
+      gbdt = xgb.train(params = xgb_params,
+                       data = dtrain,
+                       nrounds = 2000,
+                       watchlist = list(train = dtrain, val=dval),
+                       print_every_n = 25,
+                       early_stopping_rounds=50)
+    
+      # model <- xgb.dump(gbdt, with_stats = T)
+      # names <- dimnames(data.matrix(t1_train[,-1]))[[2]]
+      # importance_matrix <- xgb.importance(names, model = gbdt)
+      # xgb.plot.importance(importance_matrix)
+      
+      pred_df =  (as.data.frame(matrix(predict(gbdt,dval), nrow=dim(t1_test), byrow=TRUE)))
+      
+      if (i == 1){
+        sum_pred_df = pred_df
+      }      
+      else{
+        sum_pred_df = sum_pred_df + pred_df
+      }
+  }
   
-  pred_df =  (as.data.frame(matrix(predict(gbdt,dval), nrow=dim(t1_test), byrow=TRUE)))
+  sum_pred_df = sum_pred_df/num_seeds
   
-  pred_df = cbind(t1_test$listing_id, pred_df)
+  pred_df = cbind(t1_test$listing_id, sum_pred_df)
   colnames(pred_df) = c("listing_id", "low", "medium", "high")
 
   return(pred_df)
