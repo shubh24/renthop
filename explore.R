@@ -1541,6 +1541,99 @@ get_train_y = function(t1){
   return(train_y)  
 }
 
+validate_stacking = function(s, s_label, s_test){
+  
+  xgb_params = list(
+    booster="gbtree",
+    nthread=13,
+    colsample_bytree = 0.5,
+    subsample = 0.7,
+    # colsample_bylevel = 0.6,
+    eta = 0.05,
+    objective = 'multi:softprob',
+    max_depth = 6,
+    min_child_weight = 10,
+    eval_metric= "mlogloss",
+    num_class = 3,
+    max_delta_step = 2,
+    seed = seed
+  )
+  
+  sample <- sample.int(nrow(s), floor(.5*nrow(s)), replace = F)
+  # sample <- createDataPartition(s$interest_level, p = .5, list = FALSE)
+  
+  s1 <- s[sample, ]
+  s2 <- s[-sample, ]
+  
+  s1_label = s_label[sample]
+  s2_label = s_label[-sample]
+  
+  dtrain_s1 = xgb.DMatrix(as.matrix(s1), label=s1_label)
+  dtrain_s2 = xgb.DMatrix(as.matrix(s2), label=s2_label)
+
+  dtrain_s3 = xgb.DMatrix(as.matrix(s_test))
+  
+  level1_s1 = xgb.train(params = xgb_params,
+                   data = dtrain_s1,
+                   nrounds = 2000,
+                   watchlist = list(train = dtrain_s1, val = dtrain_s2),
+                   print_every_n = 25,
+                   early_stopping_rounds=50)
+  
+  level1_s1_pred =  (as.data.frame(matrix(predict(level1_s1, dtrain_s2), nrow=dim(s2), byrow=TRUE)))
+  colnames(level1_s1_pred) = c("low", "medium", "high")
+
+  level1_s1s3 = xgb.train(params = xgb_params,
+                        data = dtrain_s1,
+                        nrounds = 300,
+                        watchlist = list(train = dtrain_s1),
+                        print_every_n = 25,
+                        early_stopping_rounds=50)
+  
+  level1_s1s3_pred =  (as.data.frame(matrix(predict(level1_s1s3, dtrain_s3), nrow=dim(s_test), byrow=TRUE)))
+  colnames(level1_s1s3_pred) = c("low", "medium", "high")
+  
+  level1_s2 = xgb.train(params = xgb_params,
+                        data = dtrain_s2,
+                        nrounds = 2000,
+                        watchlist = list(train = dtrain_s2, val = dtrain_s1),
+                        print_every_n = 25,
+                        early_stopping_rounds=50)
+  
+  level1_s2_pred =  (as.data.frame(matrix(predict(level1_s2, dtrain_s1), nrow=dim(s1), byrow=TRUE)))
+  colnames(level1_s2_pred) = c("low", "medium", "high")
+  
+  level1_s2s3 = xgb.train(params = xgb_params,
+                          data = dtrain_s2,
+                          nrounds = 300,
+                          watchlist = list(train = dtrain_s2),
+                          print_every_n = 25,
+                          early_stopping_rounds=50)
+  
+  level1_s2s3_pred =  (as.data.frame(matrix(predict(level1_s2s3, dtrain_s3), nrow=dim(s_test), byrow=TRUE)))
+  colnames(level1_s2s3_pred) = c("low", "medium", "high")
+  
+  level2_s3 = (level1_s1s3_pred + level1_s2s3_pred)/2
+  dtrain_s3 = xgb.DMatrix(as.matrix(level2_s3))
+  
+  s_df = rbind(level1_s2_pred, level1_s1_pred)
+  dtrain_s = xgb.DMatrix(as.matrix(s_df), label=s_label)
+
+  level2 = xgb.train(params = xgb_params,
+                        data = dtrain_s,
+                        nrounds = 500,
+                        watchlist = list(train = dtrain_s),
+                        print_every_n = 25,
+                        early_stopping_rounds=50)
+  
+  level2_pred =  (as.data.frame(matrix(predict(level2, dtrain_s3), nrow=dim(level2_s3), byrow=TRUE)))
+  
+  pred_df = cbind(s_test$listing_id, level2_pred)
+  colnames(pred_df) = c("listing_id", "low", "medium", "high")
+  
+  return(pred_df)
+}
+
 run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
   
   num_seeds = 1
@@ -1553,8 +1646,9 @@ run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
       xgb_params = list(
         booster="gbtree",
         nthread=13,
-        colsample_bytree = 1,
-        subsample = 1,
+        colsample_bytree = 0.5,
+        subsample = 0.7,
+        # colsample_bylevel = 0.6,
         eta = 0.05,
         objective = 'multi:softprob',
         max_depth = 6,
