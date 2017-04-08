@@ -108,14 +108,30 @@ rf_h2o = function(t1, t2){
     write.table(t2, gzfile('./t2.csv.gz'),quote=F,sep=',',row.names=F)
     
     feature_names = names(t1)
-    feature_names = feature_names[! feature_names %in% c("created", "listing_id", "interest_level")]
+    feature_names = feature_names[! feature_names %in% c("created", "interest_level")]
     
     train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
     test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
-    rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 1000)
-    print(as.data.frame(h2o.varimp(rf))$variable)
-    res = as.data.frame(predict(rf, test_h2o))
-
+    
+    num_seeds = 3
+    seeds = as.integer(runif(num_seeds, 0, 1000))
+    
+    for (i in 1:num_seeds){
+      
+      rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 500)
+    
+      print(as.data.frame(h2o.varimp(rf))$variable)
+      res = as.data.frame(predict(rf, test_h2o))
+    
+      if (i == 1){
+        sum_res = res
+      }
+      else{
+        sum_res[, 2:4] = sum_res[, 2:4] + res[, 2:4]
+      }
+    }
+    
+    sum_res[, 2:4] = sum_res[, 2:4]/num_seeds
     return(res)
 }
 
@@ -209,37 +225,49 @@ gbm_h2o = function(t1, t2){
 
   feature_names = names(t1)
   feature_names = feature_names[!feature_names %in% c("created")]
-  # feature_names = feature_names[!feature_names %in% c("listing_id")]
   feature_names = feature_names[!feature_names %in% c("interest_level")]
 
   train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
 
-  gbm1 <- h2o.gbm(x = feature_names
-                ,y = "interest_level"
-                ,training_frame = train_h2o
-                ,distribution = "multinomial"
-                ,model_id = "gbm1"
-                # ,nfolds = 5
-                ,ntrees = 1400
-                # ,learn_rate = 0.004
-                ,learn_rate = 0.01
-                ,max_depth = 6
-                ,min_rows = 10
-                ,sample_rate = 0.7
-                ,score_tree_interval = 10
-                ,col_sample_rate = 0.5
-                ,stopping_rounds = 5
-                ,stopping_metric = "logloss"
-                ,stopping_tolerance = 1e-4
-                ,seed=100)
-
-  print(as.data.frame(h2o.varimp(gbm1)))
-  # print(h2o.performance(model = gbm1, newdata = test_h2o))
+  num_seeds = 3
+  seeds = as.integer(runif(num_seeds, 0, 1000))
   
-  res = as.data.frame(predict(gbm1, test_h2o))
-
-  return(res)
+  for (i in 1:num_seeds){
+    gbm1 <- h2o.gbm(x = feature_names
+                  ,y = "interest_level"
+                  ,training_frame = train_h2o
+                  ,distribution = "multinomial"
+                  ,model_id = "gbm1"
+                  # ,nfolds = 5
+                  ,ntrees = 1400
+                  # ,learn_rate = 0.004
+                  ,learn_rate = 0.01
+                  ,max_depth = 6
+                  ,min_rows = 10
+                  ,sample_rate = 0.7
+                  ,score_tree_interval = 10
+                  ,col_sample_rate = 0.5
+                  ,stopping_rounds = 5
+                  ,stopping_metric = "logloss"
+                  ,stopping_tolerance = 1e-4
+                  ,seed=seeds[i])
+  
+    print(as.data.frame(h2o.varimp(gbm1)))
+    res = as.data.frame(predict(gbm1, test_h2o))
+    
+    if (i == 1){
+      sum_res = res
+    }
+    else{
+      sum_res[, 2:4] = sum_res[, 2:4] + res[, 2:4]
+    }
+    
+  }
+  # print(h2o.performance(model = gbm1, newdata = test_h2o))
+  sum_res[, 2:4] = sum_res[, 2:4]/num_seeds
+  
+  return(sum_res)
 }
 
 dl_h2o = function(t1, t2){
@@ -438,25 +466,91 @@ generate_df = function(df, train_flag){
 validate = function(t1){
   set.seed(101) 
   
-  sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
+  t1$street_int_id = as.integer(as.factor(t1$display_address))
+  
+  street_count_df = as.data.frame(table(as.factor(t1$street_int_id)))
+  colnames(street_count_df) = c("street_int_id", "street_count")
+  street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
+  
+  t1 = merge(t1, street_count_df, by = "street_int_id")
+  t1$display_address = NULL
+  
+  t1$manager_int_id = as.integer(as.factor(t1$manager_id))
+  
+  # sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
+  sample <- createDataPartition(t1$interest_level, p = .75, list = FALSE)
+  
   t1_train <- t1[sample, ]
   t1_test <- t1[-sample, ]
+  
+  # t1_train = get_last_active(t1_train)
+  # t1_test = get_last_active(t1_test)
+  
+  # time_res = get_time_scores(t1_train, t1_test)
+  # t1_train = time_res[[1]]
+  # t1_test = time_res[[2]]
+  
+  cluster_res = get_clusters(t1_train, t1_test)
+  t1_train = cluster_res[[1]]
+  t1_test = cluster_res[[2]]
+  
+  nbd_manager_res = get_specialized_mangers(t1_train, t1_test) #Manager nbd count
+  t1_train = nbd_manager_res[[1]]
+  t1_test = nbd_manager_res[[2]]
+  
+  street_res = get_street_opportunity(t1_train, t1_test) #JBN road in Indiranagar
+  t1_train = street_res[[1]]
+  t1_test = street_res[[2]]
+  
+  mtb_opp_res = get_manager_town_opp(t1_train, t1_test)
+  t1_train = mtb_opp_res[[1]]
+  t1_test = mtb_opp_res[[2]]
+  
+  mb_count_res = get_manager_building_count(t1_train, t1_test)
+  t1_train = mb_count_res[[1]]
+  t1_test = mb_count_res[[2]]
+  
+  hour_res = get_hour_freq(t1_train, t1_test)
+  t1_train = hour_res[[1]]
+  t1_test = hour_res[[2]]
+  
+  # bulk_res = get_bulk_listing(t1_train, t1_test)
+  # t1_train = bulk_res[[1]]
+  # t1_test = bulk_res[[2]]
   
   manager_res = get_manager_scores(t1_train, t1_test)
   t1_train = manager_res[[1]]
   t1_test = manager_res[[2]]
   
-  # t1$building_id = NULL
-  building_res = get_building_scores(t1_train, t1_test)
-  t1_train = building_res[[1]]
-  t1_test = building_res[[2]]
-  
-  # t1_train$medium_score = t1_train$building_score*t1_train$n_features/t1_train$price
-  # t1_test$medium_score = t1_test$building_score*t1_test$n_features/t1_test$price
-  
   nbd_res = get_nbd_scores(t1_train, t1_test)
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
+  
+  # bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
+  # t1_train = bedroom_res[[1]]
+  # t1_test = bedroom_res[[2]]
+  
+  listing_res = get_listing_outliers(t1_train, t1_test)
+  t1_train = listing_res[[1]]
+  t1_test = listing_res[[2]]
+  
+  t1_train$neighborhood = NULL
+  t1_test$neighborhood = NULL
+  
+  t1_train$building_id = NULL
+  t1_test$building_id = NULL
+  
+  t1_train$manager_id = NULL
+  t1_test$manager_id = NULL
+  
+  t1_train$town = NULL
+  t1_test$town = NULL
+  
+  t1_train$street_type = NULL
+  t1_test$street_type = NULL
+  
+  t1_train$wday = NULL
+  t1_test$wday = NULL
   
   res_val = rf_h2o(t1_train, t1_test)
   print(MLmetrics::ConfusionMatrix(y_pred = res_val$predict, y_true = t1_test$interest_level))
@@ -485,6 +579,19 @@ get_last_active = function(t1){
   t1 = merge(as.data.table(t1), as.data.table(last_active_df), by = "listing_id")
   
   return(t1)
+}
+
+get_clusters = function(t1, t2){
+  
+  t = rbind(t1[, c("listing_id", "latitude", "longitude")], t2[, c("listing_id", "latitude", "longitude")])  
+  
+  cluster<-kmeans(cbind(t$latitude,t$longitude),centers=61)
+  t$borough <- cluster$cluster
+  
+  t1 = merge(t1, t[, c("listing_id", "borough")], by = "listing_id")
+  t2 = merge(t2, t[, c("listing_id", "borough")], by = "listing_id")
+  
+  return (list(t1, t2))
 }
 
 get_multi_town = function(t1, t2){
@@ -911,6 +1018,51 @@ get_nbd_scores = function(t1, t2){
   return(list(t1, t2))
 }
 
+get_borough_scores = function(t1, t2){
+  
+  borough_price = rbind(t1[, c("borough", "bedrooms", "price")], t2[, c("borough", "bedrooms", "price")])
+  
+  borough_agg = aggregate(price ~ borough + bedrooms, data = borough_price, FUN = median)
+  colnames(borough_agg)[colnames(borough_agg) == "price"] = "median_price_borough"
+  
+  t1 = merge(t1, borough_agg, by = c("borough", "bedrooms"))
+  t1$borough_opportunity = (t1$price - t1$median_price_borough)/t1$median_price_borough
+  t1$median_price_borough = NULL
+  
+  t2 = left_join(t2, as.data.table(borough_agg), by = c("borough", "bedrooms"))
+  t2$borough_opportunity = (t2$price - t2$median_price_borough)/t2$median_price_borough
+  t2$median_price_borough = NULL
+  # t2$price_diff_from_median[!is.na(t2$median_price_borough)] = t2$price[!is.na(t2$median_price_borough)] - t2$median_price_borough[!is.na(t2$median_price_borough)]
+  # t2$price_diff_from_median[is.na(t2$median_price_borough)] = 0
+  # t2$price_ratio_with_median[!is.na(t2$median_price_borough)] = t2$price[!is.na(t2$median_price_borough)]/t2$median_price_borough[!is.na(t2$median_price_borough)]
+  # t2$price_ratio_with_median[is.na(t2$median_price_borough)] = 1
+  
+  borough_df = t1[, c("borough", "interest_level")]  
+  borough_df = cbind(borough_df, model.matrix( ~ interest_level - 1, data = borough_df))
+  
+  borough_agg = aggregate(cbind(interest_levelhigh, interest_levelmedium, interest_levellow) ~ borough, data = borough_df, FUN = sum)
+  
+  borough_agg$count = rowSums(borough_agg[,c(2:4)])
+  
+  borough_agg[, c(2:4)] = borough_agg[, c(2:4)]/borough_agg$count
+  borough_agg$borough_score = 2*borough_agg$interest_levelhigh + borough_agg$interest_levelmedium 
+  borough_agg$borough_score[borough_agg$count < 20] = median(borough_agg$borough_score[borough_agg$count >= 20])
+  
+  borough_agg$interest_levellow = NULL
+  borough_agg$interest_levelhigh = NULL
+  borough_agg$interest_levelmedium = NULL
+  borough_agg$count = NULL
+  
+  t1 = merge(t1, borough_agg, by = "borough")
+  t1$borough = NULL
+  
+  t2 = left_join(t2, as.data.table(borough_agg), by = "borough")
+  # t2$borough_score[is.na(t2$borough_score)] = median(t2$borough_score, na.rm = TRUE)
+  t2$borough = NULL
+  
+  return(list(t1, t2))
+}
+
 get_split_score = function(t1, feature_name){
   
   positive_split = (nrow(t1[(t1$interest_level == "high") & t1[[feature_name]] == TRUE,])/nrow(t1_train[t1_train[[feature_name]] == TRUE,]))
@@ -1154,7 +1306,8 @@ validate_gbm = function(t1){
   
   t1$manager_int_id = as.integer(as.factor(t1$manager_id))
   
-  sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
+  # sample <- sample.int(nrow(t1), floor(.75*nrow(t1)), replace = F)
+  sample <- createDataPartition(t1$interest_level, p = .75, list = FALSE)
   t1_train <- t1[sample, ]
   t1_test <- t1[-sample, ]
   
@@ -1214,7 +1367,15 @@ validate_gbm = function(t1){
   nbd_res = get_nbd_scores(t1_train, t1_test)
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
+  
+  cluster_res = get_clusters(t1_train, t1_test)
+  t1_train = cluster_res[[1]]
+  t1_test = cluster_res[[2]]
 
+  borough_res = get_borough_scores(t1_train, t1_test)
+  t1_train = borough_res[[1]]
+  t1_test = borough_res[[2]]
+  
   # town_res = get_town_opportunity(t1_train, t1_test)
   # t1_train = town_res[[1]]
   # t1_test = town_res[[2]]
@@ -1407,6 +1568,10 @@ validate_xgb = function(t1){
   # t1_train = time_res[[1]]
   # t1_test = time_res[[2]]
    
+  cluster_res = get_clusters(t1_train, t1_test)
+  t1_train = cluster_res[[1]]
+  t1_test = cluster_res[[2]]
+  
   nbd_manager_res = get_specialized_mangers(t1_train, t1_test) #Manager nbd count
   t1_train = nbd_manager_res[[1]]
   t1_test = nbd_manager_res[[2]]
@@ -1439,6 +1604,10 @@ validate_xgb = function(t1){
   t1_train = nbd_res[[1]]
   t1_test = nbd_res[[2]]
 
+  borough_res = get_borough_scores(t1_train, t1_test)
+  t1_train = borough_res[[1]]
+  t1_test = borough_res[[2]]
+  
   # bedroom_res = get_bedroom_opportunity(t1_train, t1_test)
   # t1_train = bedroom_res[[1]]
   # t1_test = bedroom_res[[2]]
@@ -1665,10 +1834,10 @@ run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
                        print_every_n = 25,
                        early_stopping_rounds=50)
     
-      # model <- xgb.dump(gbdt, with_stats = T)
-      # names <- dimnames(data.matrix(t1_train[,-1]))[[2]]
-      # importance_matrix <- xgb.importance(names, model = gbdt)
-      # xgb.plot.importance(importance_matrix)
+      model <- xgb.dump(gbdt, with_stats = T)
+      names <- dimnames(data.matrix(t1_train[,-1]))[[2]]
+      importance_matrix <- xgb.importance(names, model = gbdt)
+      xgb.plot.importance(importance_matrix)
       
       pred_df =  (as.data.frame(matrix(predict(gbdt,dval), nrow=dim(t1_test), byrow=TRUE)))
       
@@ -1768,13 +1937,20 @@ manager_int_df$manager_int_id = as.integer(as.factor(manager_int_df$manager_id))
 t1 = left_join(t1, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
 t2 = left_join(t2, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
 
-t1 = get_last_active(t1)
-t2 = get_last_active(t2)
+# t1 = get_last_active(t1)
+# t2 = get_last_active(t2)
 
-time_res = get_time_scores(t1, t2)
-t1 = time_res[[1]]
-t2 = time_res[[2]]
+# time_res = get_time_scores(t1, t2)
+# t1 = time_res[[1]]
+# t2 = time_res[[2]]
 
+cluster_res = get_clusters(t1, t2)
+t1 = cluster_res[[1]]
+t2 = cluster_res[[2]]
+
+borough_res = get_borough_scores(t1, t2)
+t1 = borough_res[[1]]
+t2 = borough_res[[2]]
 
 nbd_manager_res = get_specialized_mangers(t1, t2)
 t1 = nbd_manager_res[[1]]
@@ -1796,9 +1972,9 @@ mb_count_res = get_manager_building_count(t1, t2)
 t1 = mb_count_res[[1]]
 t2 = mb_count_res[[2]]
 
-ms_count_res = get_manager_address_count(t1, t2)
-t1 = ms_count_res[[1]]
-t2 = ms_count_res[[2]]
+# ms_count_res = get_manager_address_count(t1, t2)
+# t1 = ms_count_res[[1]]
+# t2 = ms_count_res[[2]]
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
 manager_res = get_manager_scores(t1, t2)
 t1 = manager_res[[1]]
@@ -1812,13 +1988,13 @@ nbd_res = get_nbd_scores(t1, t2)
 t1 = nbd_res[[1]]
 t2 = nbd_res[[2]]
 
-town_res = get_town_opportunity(t1, t2)
-t1 = town_res[[1]]
-t2 = town_res[[2]]
-
-bedroom_res = get_bedroom_opportunity(t1, t2)
-t1 = bedroom_res[[1]]
-t2 = bedroom_res[[2]]
+# town_res = get_town_opportunity(t1, t2)
+# t1 = town_res[[1]]
+# t2 = town_res[[2]]
+# 
+# bedroom_res = get_bedroom_opportunity(t1, t2)
+# t1 = bedroom_res[[1]]
+# t2 = bedroom_res[[2]]
 
 listing_res = get_listing_outliers(t1, t2) 
 t1 = listing_res[[1]]
@@ -1826,10 +2002,14 @@ t2 = listing_res[[2]]
 
 t1$building_id = NULL
 t2$building_id = NULL
+t1$town = NULL
+t2$town = NULL
+t1$street_type = NULL
+t2$street_type = NULL
 
 pred_df_gbm = gbm_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(pred_df_gbm$high), medium = as.vector(pred_df_gbm$medium), low = as.vector(pred_df_gbm$low))
-write.csv(pred, "gbm_30.csv", row.names = FALSE)
+write.csv(pred, "gbm_31.csv", row.names = FALSE)
 
 #Running RF
 res = rf_h2o(t1, t2)
