@@ -1575,58 +1575,53 @@ validate_stacking = function(s, s_label, s_test){
   
   level1_s1 = xgb.train(params = xgb_params,
                    data = dtrain_s1,
-                   nrounds = 2000,
-                   watchlist = list(train = dtrain_s1, val = dtrain_s2),
+                   nrounds = 300,
+                   watchlist = list(train = dtrain_s1),
                    print_every_n = 25,
                    early_stopping_rounds=50)
   
   level1_s1_pred =  (as.data.frame(matrix(predict(level1_s1, dtrain_s2), nrow=dim(s2), byrow=TRUE)))
   colnames(level1_s1_pred) = c("low", "medium", "high")
+  level1_s1_pred = cbind(s2, level1_s1_pred)
 
-  level1_s1s3 = xgb.train(params = xgb_params,
-                        data = dtrain_s1,
-                        nrounds = 300,
-                        watchlist = list(train = dtrain_s1),
-                        print_every_n = 25,
-                        early_stopping_rounds=50)
-  
-  level1_s1s3_pred =  (as.data.frame(matrix(predict(level1_s1s3, dtrain_s3), nrow=dim(s_test), byrow=TRUE)))
+  level1_s1s3_pred =  (as.data.frame(matrix(predict(level1_s1, dtrain_s3), nrow=dim(s_test), byrow=TRUE)))
   colnames(level1_s1s3_pred) = c("low", "medium", "high")
   
   level1_s2 = xgb.train(params = xgb_params,
                         data = dtrain_s2,
-                        nrounds = 2000,
-                        watchlist = list(train = dtrain_s2, val = dtrain_s1),
+                        nrounds = 300,
+                        watchlist = list(train = dtrain_s2),
                         print_every_n = 25,
                         early_stopping_rounds=50)
   
   level1_s2_pred =  (as.data.frame(matrix(predict(level1_s2, dtrain_s1), nrow=dim(s1), byrow=TRUE)))
   colnames(level1_s2_pred) = c("low", "medium", "high")
+  level1_s2_pred = cbind(s1, level1_s2_pred)
   
-  level1_s2s3 = xgb.train(params = xgb_params,
-                          data = dtrain_s2,
-                          nrounds = 300,
-                          watchlist = list(train = dtrain_s2),
-                          print_every_n = 25,
-                          early_stopping_rounds=50)
-  
-  level1_s2s3_pred =  (as.data.frame(matrix(predict(level1_s2s3, dtrain_s3), nrow=dim(s_test), byrow=TRUE)))
+  level1_s2s3_pred =  (as.data.frame(matrix(predict(level1_s2, dtrain_s3), nrow=dim(s_test), byrow=TRUE)))
   colnames(level1_s2s3_pred) = c("low", "medium", "high")
   
   level2_s3 = (level1_s1s3_pred + level1_s2s3_pred)/2
-  dtrain_s3 = xgb.DMatrix(as.matrix(level2_s3))
+  level2_s3 = cbind(s_test, level2_s3)
+  dtrain_s3 = xgb.DMatrix(as.matrix(level2_s3), label = train_y_val)
   
   s_df = rbind(level1_s2_pred, level1_s1_pred)
-  dtrain_s = xgb.DMatrix(as.matrix(s_df), label=s_label)
+  dtrain_s = xgb.DMatrix(as.matrix(s_df), label=c(s1_label, s2_label))
 
   level2 = xgb.train(params = xgb_params,
                         data = dtrain_s,
-                        nrounds = 500,
-                        watchlist = list(train = dtrain_s),
+                        nrounds = 300,
+                        watchlist = list(train = dtrain_s, val = dtrain_s3),
                         print_every_n = 25,
                         early_stopping_rounds=50)
   
+  model <- xgb.dump(level2, with_stats = T)
+  names <- dimnames(data.matrix(s_df[,-1]))[[2]]
+  importance_matrix <- xgb.importance(names, model = level2)
+  xgb.plot.importance(importance_matrix)
+  
   level2_pred =  (as.data.frame(matrix(predict(level2, dtrain_s3), nrow=dim(level2_s3), byrow=TRUE)))
+  
   
   pred_df = cbind(s_test$listing_id, level2_pred)
   colnames(pred_df) = c("listing_id", "low", "medium", "high")
