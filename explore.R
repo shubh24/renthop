@@ -118,7 +118,7 @@ rf_h2o = function(t1, t2){
     
     for (i in 1:num_seeds){
       
-      rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 500)
+      rf = h2o.randomForest(x = feature_names, y = "interest_level", training_frame = train_h2o, ntree = 500, max_depth = 6, seed = seeds[i])
     
       print(as.data.frame(h2o.varimp(rf))$variable)
       res = as.data.frame(predict(rf, test_h2o))
@@ -1405,6 +1405,105 @@ validate_gbm = function(t1){
   
 }
 
+stacking_gbm = function(t1, t2){
+  
+  street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
+  
+  street_address_df$street_int_id = as.integer(as.factor(street_address_df$display_address))
+  street_count_df = as.data.frame(table(as.factor(street_address_df$street_int_id)))
+  colnames(street_count_df) = c("street_int_id", "street_count")
+  street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
+  
+  street_address_df = merge(street_address_df, street_count_df, by = "street_int_id")
+  
+  t1 = merge(t1, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+  t2 = merge(t2, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+  
+  # t1$street_int_id = NULL
+  t1$display_address = NULL
+  # t2$street_int_id = NULL
+  t2$display_address = NULL
+  
+  manager_int_df = rbind(t1[, c("listing_id", "manager_id")], t2[, c("listing_id", "manager_id")])
+  manager_int_df$manager_int_id = as.integer(as.factor(manager_int_df$manager_id))
+  t1 = left_join(t1, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+  t2 = left_join(t2, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+  
+  # t1 = get_last_active(t1)
+  # t2 = get_last_active(t2)
+  
+  # time_res = get_time_scores(t1, t2)
+  # t1 = time_res[[1]]
+  # t2 = time_res[[2]]
+  
+  cluster_res = get_clusters(t1, t2)
+  t1 = cluster_res[[1]]
+  t2 = cluster_res[[2]]
+  
+  borough_res = get_borough_scores(t1, t2)
+  t1 = borough_res[[1]]
+  t2 = borough_res[[2]]
+  
+  nbd_manager_res = get_specialized_mangers(t1, t2)
+  t1 = nbd_manager_res[[1]]
+  t2 = nbd_manager_res[[2]]
+  
+  street_res = get_street_opportunity(t1, t2)
+  t1 = street_res[[1]]
+  t2 = street_res[[2]]
+  
+  # multi_town_res = get_multi_town(t1, t2)
+  # t1 = multi_town_res[[1]]
+  # t2 = multi_town_res[[2]]
+  
+  mtb_opp_res = get_manager_town_opp(t1, t2)
+  t1 = mtb_opp_res[[1]]
+  t2 = mtb_opp_res[[2]]
+  
+  mb_count_res = get_manager_building_count(t1, t2)
+  t1 = mb_count_res[[1]]
+  t2 = mb_count_res[[2]]
+  
+  # ms_count_res = get_manager_address_count(t1, t2)
+  # t1 = ms_count_res[[1]]
+  # t2 = ms_count_res[[2]]
+  
+  manager_res = get_manager_scores(t1, t2)
+  t1 = manager_res[[1]]
+  t2 = manager_res[[2]]
+  
+  hour_res = get_hour_freq(t1, t2)
+  t1 = hour_res[[1]]
+  t2 = hour_res[[2]]
+  
+  nbd_res = get_nbd_scores(t1, t2)
+  t1 = nbd_res[[1]]
+  t2 = nbd_res[[2]]
+  
+  # town_res = get_town_opportunity(t1, t2)
+  # t1 = town_res[[1]]
+  # t2 = town_res[[2]]
+  # 
+  # bedroom_res = get_bedroom_opportunity(t1, t2)
+  # t1 = bedroom_res[[1]]
+  # t2 = bedroom_res[[2]]
+  
+  listing_res = get_listing_outliers(t1, t2) 
+  t1 = listing_res[[1]]
+  t2 = listing_res[[2]]
+  
+  t1$building_id = NULL
+  t2$building_id = NULL
+  t1$town = NULL
+  t2$town = NULL
+  t1$street_type = NULL
+  t2$street_type = NULL
+  
+  pred_df_gbm = gbm_h2o(t1, t2)
+  
+  return(pred_df_gbm)
+}
+
 set_xgb = function(t1, t2){
   
   street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
@@ -1441,6 +1540,14 @@ set_xgb = function(t1, t2){
   mtb_opp_res = get_manager_town_opp(t1, t2)
   t1 = mtb_opp_res[[1]]
   t2 = mtb_opp_res[[2]]
+  
+  cluster_res = get_clusters(t1_train, t1_test)
+  t1_train = cluster_res[[1]]
+  t1_test = cluster_res[[2]]
+  
+  borough_res = get_borough_scores(t1_train, t1_test)
+  t1_train = borough_res[[1]]
+  t1_test = borough_res[[2]]
   
   manager_res = get_manager_scores(t1, t2)
   t1 = manager_res[[1]]
@@ -1480,24 +1587,25 @@ set_xgb = function(t1, t2){
   t2$wday = NULL
   
   t1_y = get_train_y(t1)
-
-  t1 = xgb(t1, 1)
-  t2 = xgb(t2, 0)
+  # t2_y = get_train_y(t2)
   
-  dtrain = xgb.DMatrix(as.matrix(t1), label=t1_y)
+  t1 = xgb(t1)
+  t2 = xgb(t2)
+  
+  dtrain = xgb.DMatrix(as.matrix(t1), label = t1_y)
   dval = xgb.DMatrix(as.matrix(t2))
 
-  num_seeds = 10
+  num_seeds = 3
   seeds = as.integer(runif(num_seeds,0,1000))
-  
+
   for (i in 1:num_seeds){
-    
+
     xgb_params = list(
       booster="gbtree",
       nthread=13,
       colsample_bytree = 0.5,
       subsample = 0.7,
-      eta = 0.05,
+      eta = 0.01,
       objective = 'multi:softprob',
       max_depth = 6,
       min_child_weight = 10,
@@ -1506,39 +1614,38 @@ set_xgb = function(t1, t2){
       max_delta_step = 2,
       seed = seeds[i]
     )
-    
+
     #perform training
     gbdt = xgb.train(params = xgb_params,
                      data = dtrain,
-                     nrounds = 500,
+                     nrounds = 2000,
                      watchlist = list(train = dtrain),
                      print_every_n = 25,
                      early_stopping_rounds=50)
-    
-    # model <- xgb.dump(gbdt, with_stats = T)
-    # names <- dimnames(data.matrix(t1[,-1]))[[2]]
-    # importance_matrix <- xgb.importance(names, model = gbdt)
-    # xgb.plot.importance(importance_matrix)
-    
+
+    model <- xgb.dump(gbdt, with_stats = T)
+    names <- dimnames(data.matrix(t1[,-1]))[[2]]
+    importance_matrix <- xgb.importance(names, model = gbdt)
+    xgb.plot.importance(importance_matrix)
+
     pred_df =  (as.data.frame(matrix(predict(gbdt,dval), nrow=dim(t2), byrow=TRUE)))
-    
+
     if (i == 1){
       sum_pred_df = pred_df
-    }      
+    }
     else{
       sum_pred_df = sum_pred_df + pred_df
     }
   }
-  
+
   sum_pred_df = sum_pred_df/num_seeds
-  
+
   pred_df = cbind(t2$listing_id, sum_pred_df)
-  
   colnames(pred_df) = c("listing_id", "low", "medium", "high")
-  write.csv(pred_df, "xgb_4.csv", row.names = FALSE)
-  
+  # write.csv(pred_df, "xgb_5.csv", row.names = FALSE)
+
   return(pred_df)
-  
+
 }
 
 validate_xgb = function(t1){
@@ -1687,9 +1794,7 @@ xgb = function(t1, train_flag){
 
   train_x = t1
   
-  if (train_flag == 1){
-    train_x$interest_level = NULL
-  }
+  train_x$interest_level = NULL
   
   dmy <- dummyVars(" ~ .", data = train_x)
   t_xgb <- data.frame(predict(dmy, newdata = train_x))
@@ -1710,92 +1815,48 @@ get_train_y = function(t1){
   return(train_y)  
 }
 
-validate_stacking = function(s, s_label, s_test){
+validate_stacking = function(t1_train, t1_test){
   
-  xgb_params = list(
-    booster="gbtree",
-    nthread=13,
-    colsample_bytree = 0.5,
-    subsample = 0.7,
-    # colsample_bylevel = 0.6,
-    eta = 0.05,
-    objective = 'multi:softprob',
-    max_depth = 6,
-    min_child_weight = 10,
-    eval_metric= "mlogloss",
-    num_class = 3,
-    max_delta_step = 2,
-    seed = seed
-  )
+  # sample <- createDataPartition(t1$interest_level, p = .75, list = FALSE)
+  # t1_train <- t1[sample, ]
+  # t1_test <- t1[-sample, ]
   
-  sample <- sample.int(nrow(s), floor(.5*nrow(s)), replace = F)
-  # sample <- createDataPartition(s$interest_level, p = .5, list = FALSE)
-  
-  s1 <- s[sample, ]
-  s2 <- s[-sample, ]
-  
-  s1_label = s_label[sample]
-  s2_label = s_label[-sample]
-  
-  dtrain_s1 = xgb.DMatrix(as.matrix(s1), label=s1_label)
-  dtrain_s2 = xgb.DMatrix(as.matrix(s2), label=s2_label)
+  sample2 <- createDataPartition(t1_train$interest_level, p = .5, list = FALSE)
 
-  dtrain_s3 = xgb.DMatrix(as.matrix(s_test))
+  s_label = t1_train$interest_level
   
-  level1_s1 = xgb.train(params = xgb_params,
-                   data = dtrain_s1,
-                   nrounds = 300,
-                   watchlist = list(train = dtrain_s1),
-                   print_every_n = 25,
-                   early_stopping_rounds=50)
+  s1 <- t1_train[sample2, ]
+  s2 <- t1_train[-sample2, ]
   
-  level1_s1_pred =  (as.data.frame(matrix(predict(level1_s1, dtrain_s2), nrow=dim(s2), byrow=TRUE)))
-  colnames(level1_s1_pred) = c("low", "medium", "high")
-  level1_s1_pred = cbind(s2, level1_s1_pred)
+  s1_label = s_label[sample2]
+  s2_label = s_label[-sample2]
 
-  level1_s1s3_pred =  (as.data.frame(matrix(predict(level1_s1, dtrain_s3), nrow=dim(s_test), byrow=TRUE)))
-  colnames(level1_s1s3_pred) = c("low", "medium", "high")
+  level1_s1_gbm = set_xgb(s1, s2)[, c("high", "low", "medium")]
+  level1_s2_gbm = set_xgb(s2, s1)[, c("high", "low", "medium")]
   
-  level1_s2 = xgb.train(params = xgb_params,
-                        data = dtrain_s2,
-                        nrounds = 300,
-                        watchlist = list(train = dtrain_s2),
-                        print_every_n = 25,
-                        early_stopping_rounds=50)
+  level1_s1s3_pred =  set_xgb(s1, t1_test)[, c("high", "low", "medium")]
+  level1_s2s3_pred =  set_xgb(s2, t1_test)[, c("high", "low", "medium")]
   
-  level1_s2_pred =  (as.data.frame(matrix(predict(level1_s2, dtrain_s1), nrow=dim(s1), byrow=TRUE)))
-  colnames(level1_s2_pred) = c("low", "medium", "high")
-  level1_s2_pred = cbind(s1, level1_s2_pred)
-  
-  level1_s2s3_pred =  (as.data.frame(matrix(predict(level1_s2, dtrain_s3), nrow=dim(s_test), byrow=TRUE)))
-  colnames(level1_s2s3_pred) = c("low", "medium", "high")
+  print(MultiLogLoss(y_true = s2_label, y_pred = as.matrix(level1_s1_gbm[, c("high", "low", "medium")])))
+  print(MultiLogLoss(y_true = s1_label, y_pred = as.matrix(level1_s2_gbm[, c("high", "low", "medium")])))
+
+  level1_s1_pred = cbind(s2, level1_s1_gbm)
+  level1_s2_pred = cbind(s1, level1_s2_gbm)
   
   level2_s3 = (level1_s1s3_pred + level1_s2s3_pred)/2
-  level2_s3 = cbind(s_test, level2_s3)
-  dtrain_s3 = xgb.DMatrix(as.matrix(level2_s3), label = train_y_val)
-  
-  s_df = rbind(level1_s2_pred, level1_s1_pred)
-  dtrain_s = xgb.DMatrix(as.matrix(s_df), label=c(s1_label, s2_label))
+  level2_s3 = cbind(t1_test, level2_s3)
 
-  level2 = xgb.train(params = xgb_params,
-                        data = dtrain_s,
-                        nrounds = 300,
-                        watchlist = list(train = dtrain_s, val = dtrain_s3),
-                        print_every_n = 25,
-                        early_stopping_rounds=50)
+  s_df = rbind(level1_s2_pred, level1_s1_pred)
   
-  model <- xgb.dump(level2, with_stats = T)
-  names <- dimnames(data.matrix(s_df[,-1]))[[2]]
-  importance_matrix <- xgb.importance(names, model = level2)
-  xgb.plot.importance(importance_matrix)
+  level2_gbm = stacking_gbm(s_df, level2_s3)[, c("high", "low", "medium")]
+  level2_gbm = cbind(t1_test$listing_id, level2_gbm)
+  colnames(level2_gbm) = c("listing_id", "high", "low", "medium")
+  write.csv(level2_gbm, "stack_1.csv", row.names = FALSE)
   
-  level2_pred =  (as.data.frame(matrix(predict(level2, dtrain_s3), nrow=dim(level2_s3), byrow=TRUE)))
+  # level2_xgb = set_xgb(s_df, level2_s3)[, c("high", "low", "medium")]
+  # print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(level2_gbm[, c("high", "low", "medium")])))
   
-  
-  pred_df = cbind(s_test$listing_id, level2_pred)
-  colnames(pred_df) = c("listing_id", "low", "medium", "high")
-  
-  return(pred_df)
+  return(level2_gbm)
 }
 
 run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
@@ -2014,7 +2075,7 @@ write.csv(pred, "gbm_31.csv", row.names = FALSE)
 #Running RF
 res = rf_h2o(t1, t2)
 pred <- data.frame(listing_id = as.vector(t2$listing_id), high = as.vector(res$high), medium = as.vector(res$medium), low = as.vector(res$low))
-write.csv(pred, "rf_h2o_3.csv", row.names = FALSE)
+write.csv(pred, "rf_h2o_4.csv", row.names = FALSE)
 
 check = as.data.frame(t1$interest_level)
 colnames(check) = c("interest_level")
