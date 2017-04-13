@@ -230,7 +230,7 @@ gbm_h2o = function(t1, t2){
   train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
 
-  num_seeds = 3
+  num_seeds = 1
   seeds = as.integer(runif(num_seeds, 0, 1000))
   
   for (i in 1:num_seeds){
@@ -1595,7 +1595,7 @@ set_xgb = function(t1, t2){
   dtrain = xgb.DMatrix(as.matrix(t1), label = t1_y)
   dval = xgb.DMatrix(as.matrix(t2))
 
-  num_seeds = 3
+  num_seeds = 1
   seeds = as.integer(runif(num_seeds,0,1000))
 
   for (i in 1:num_seeds){
@@ -1605,7 +1605,7 @@ set_xgb = function(t1, t2){
       nthread=13,
       colsample_bytree = 0.5,
       subsample = 0.7,
-      eta = 0.01,
+      eta = 0.05,
       objective = 'multi:softprob',
       max_depth = 6,
       min_child_weight = 10,
@@ -1618,7 +1618,7 @@ set_xgb = function(t1, t2){
     #perform training
     gbdt = xgb.train(params = xgb_params,
                      data = dtrain,
-                     nrounds = 2000,
+                     nrounds = 300,
                      watchlist = list(train = dtrain),
                      print_every_n = 25,
                      early_stopping_rounds=50)
@@ -1820,38 +1820,55 @@ validate_stacking = function(t1_train, t1_test){
   # sample <- createDataPartition(t1$interest_level, p = .75, list = FALSE)
   # t1_train <- t1[sample, ]
   # t1_test <- t1[-sample, ]
-  
-  sample2 <- createDataPartition(t1_train$interest_level, p = .5, list = FALSE)
 
   s_label = t1_train$interest_level
   
+  sample2 <- createDataPartition(t1_train$interest_level, p = .2, list = FALSE)
   s1 <- t1_train[sample2, ]
-  s2 <- t1_train[-sample2, ]
-  
-  s1_label = s_label[sample2]
-  s2_label = s_label[-sample2]
+  s_left <- t1_train[-sample2, ]
 
-  level1_s1_gbm = set_xgb(s1, s2)[, c("high", "low", "medium")]
-  level1_s2_gbm = set_xgb(s2, s1)[, c("high", "low", "medium")]
-  
-  level1_s1s3_pred =  set_xgb(s1, t1_test)[, c("high", "low", "medium")]
-  level1_s2s3_pred =  set_xgb(s2, t1_test)[, c("high", "low", "medium")]
-  
-  print(MultiLogLoss(y_true = s2_label, y_pred = as.matrix(level1_s1_gbm[, c("high", "low", "medium")])))
-  print(MultiLogLoss(y_true = s1_label, y_pred = as.matrix(level1_s2_gbm[, c("high", "low", "medium")])))
+  sample2 <- createDataPartition(s_left$interest_level, p = .2, list = FALSE)
+  s2 <- s_left[sample2, ]
+  s_left <- s_left[-sample2, ]
 
-  level1_s1_pred = cbind(s2, level1_s1_gbm)
-  level1_s2_pred = cbind(s1, level1_s2_gbm)
-  
-  level2_s3 = (level1_s1s3_pred + level1_s2s3_pred)/2
-  level2_s3 = cbind(t1_test, level2_s3)
+  sample2 <- createDataPartition(s_left$interest_level, p = .2, list = FALSE)
+  s3 <- s_left[sample2, ]
+  s_left <- s_left[-sample2, ]
 
-  s_df = rbind(level1_s2_pred, level1_s1_pred)
+  sample2 <- createDataPartition(s_left$interest_level, p = .2, list = FALSE)
+  s4 <- s_left[sample2, ]
+  s5 <- s_left[-sample2, ]
+
+  level1_s5_gbm = set_xgb(rbind(s1,s2,s3,s4), s5)[, c("high", "low", "medium")]
+  level1_s4_gbm = set_xgb(rbind(s1,s2,s3,s5), s4)[, c("high", "low", "medium")]
+  level1_s3_gbm = set_xgb(rbind(s1,s2,s4,s5), s3)[, c("high", "low", "medium")]
+  level1_s2_gbm = set_xgb(rbind(s1,s3,s4,s5), s2)[, c("high", "low", "medium")]
+  level1_s1_gbm = set_xgb(rbind(s2,s3,s4,s5), s1)[, c("high", "low", "medium")]
   
-  level2_gbm = stacking_gbm(s_df, level2_s3)[, c("high", "low", "medium")]
+  # print(MultiLogLoss(y_true = s2_label, y_pred = as.matrix(level1_s1_gbm[, c("high", "low", "medium")])))
+  # print(MultiLogLoss(y_true = s1_label, y_pred = as.matrix(level1_s2_gbm[, c("high", "low", "medium")])))
+
+  level1_s5_pred = cbind(s5, level1_s5_gbm)
+  level1_s4_pred = cbind(s4, level1_s4_gbm)
+  level1_s3_pred = cbind(s3, level1_s3_gbm)
+  level1_s2_pred = cbind(s2, level1_s2_gbm)
+  level1_s1_pred = cbind(s1, level1_s1_gbm)
+  
+  level1_1_pred =  set_xgb(rbind(s1,s2,s3,s4), t1_test)[, c("high", "low", "medium")]
+  level1_2_pred =  set_xgb(rbind(s1,s2,s3,s5), t1_test)[, c("high", "low", "medium")]
+  level1_3_pred =  set_xgb(rbind(s1,s2,s4,s5), t1_test)[, c("high", "low", "medium")]
+  level1_4_pred =  set_xgb(rbind(s1,s3,s4,s5), t1_test)[, c("high", "low", "medium")]
+  level1_5_pred =  set_xgb(rbind(s2,s3,s4,s5), t1_test)[, c("high", "low", "medium")]
+  
+  level2_s6 = (level1_1_pred + level1_2_pred + level1_3_pred+ level1_4_pred + level1_5_pred)/5
+  level2_s6 = cbind(t1_test, level2_s6)
+
+  s_df = rbind(level1_s1_pred, level1_s2_pred, level1_s3_pred, level1_s4_pred, level1_s5_pred)
+  
+  level2_gbm = stacking_gbm(s_df, level2_s6)[, c("high", "low", "medium")]
   level2_gbm = cbind(t1_test$listing_id, level2_gbm)
   colnames(level2_gbm) = c("listing_id", "high", "low", "medium")
-  write.csv(level2_gbm, "stack_1.csv", row.names = FALSE)
+  write.csv(level2_gbm, "stack_3.csv", row.names = FALSE)
   
   # level2_xgb = set_xgb(s_df, level2_s3)[, c("high", "low", "medium")]
   # print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(level2_gbm[, c("high", "low", "medium")])))
