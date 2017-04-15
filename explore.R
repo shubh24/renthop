@@ -133,7 +133,7 @@ rf_h2o = function(t1, t2){
     
     sum_res[, 2:4] = sum_res[, 2:4]/num_seeds
     
-    colnames(sum_res) = c("listing_id", "high_rf", "medium_rf", "low_rf")
+    colnames(sum_res) = c("listing_id", "high_rf", "low_rf", "medium_rf")
     
     return(sum_res)
 }
@@ -269,7 +269,7 @@ gbm_h2o = function(t1, t2){
   }
   # print(h2o.performance(model = gbm1, newdata = test_h2o))
   sum_res[, 2:4] = sum_res[, 2:4]/num_seeds
-  colnames(sum_res) = c("listing_id", "high_gbm", "medium_gbm", "low_gbm")
+  colnames(sum_res) = c("listing_id", "high_gbm", "low_gbm", "medium_gbm")
   return(sum_res)
 }
 
@@ -1971,30 +1971,61 @@ validate_stacking = function(t1_train, t1_test){
   level1_test_rf =  stacking_rf(t1_train, t1_test)[, c("high_rf", "low_rf", "medium_rf")]
   
   #xgb stacker
-  level2_s5_xgb = set_xgb(rbind(s1,s2,s3,s4), s5)[, c("high_xgb", "low_xgb", "medium_xgb")]
-  level2_s4_xgb = set_xgb(rbind(s1,s2,s3,s5), s4)[, c("high_xgb", "low_xgb", "medium_xgb")]
-  level2_s3_xgb = set_xgb(rbind(s1,s2,s4,s5), s3)[, c("high_xgb", "low_xgb", "medium_xgb")]
-  level2_s2_xgb = set_xgb(rbind(s1,s3,s4,s5), s2)[, c("high_xgb", "low_xgb", "medium_xgb")]
-  level2_s1_xgb = set_xgb(rbind(s2,s3,s4,s5), s1)[, c("high_xgb", "low_xgb", "medium_xgb")]
+  level1_s5_xgb = set_xgb(rbind(s1,s2,s3,s4), s5)[, c("high_xgb", "low_xgb", "medium_xgb")]
+  level1_s4_xgb = set_xgb(rbind(s1,s2,s3,s5), s4)[, c("high_xgb", "low_xgb", "medium_xgb")]
+  level1_s3_xgb = set_xgb(rbind(s1,s2,s4,s5), s3)[, c("high_xgb", "low_xgb", "medium_xgb")]
+  level1_s2_xgb = set_xgb(rbind(s1,s3,s4,s5), s2)[, c("high_xgb", "low_xgb", "medium_xgb")]
+  level1_s1_xgb = set_xgb(rbind(s2,s3,s4,s5), s1)[, c("high_xgb", "low_xgb", "medium_xgb")]
 
   level1_xgb = rbind(level2_s1_xgb, level2_s2_xgb, level2_s3_xgb, level2_s4_xgb, level2_s5_xgb)
   level1_test_xgb =  set_xgb(t1_train, t1_test)[, c("high_xgb", "low_xgb", "medium_xgb")]
 
-  #Getting it all together
-  final_train = cbind(level1_gbm, level1_xgb, level1_rf)
-  final_test = cbind(level1_test_gbm, level1_test_xgb, level1_test_rf)
-  
-  final_train$interest_level = as.factor(c(as.vector(s1$interest_level), as.vector(s2$interest_level), as.vector(s3$interest_level), as.vector(s4$interest_level), as.vector(s5$interest_level)))
+  p1 = cbind(s1, level1_s1_gbm)
+  p1 = cbind(p1, level1_s1_rf)
+  p1 = cbind(p1, level1_s1_xgb)
 
-  # level3_gbm = set_xgb(s_df, s6)[, c("high", "low", "medium")]
-  # level3_gbm = cbind(t1_test$listing_id, level3_gbm)
-  # colnames(level3_gbm) = c("listing_id", "high", "low", "medium")
+  p2 = cbind(s2, level1_s2_gbm)
+  p2 = cbind(p2, level1_s2_rf)
+  p2 = cbind(p2, level1_s2_xgb)
+
+  p3 = cbind(s3, level1_s3_gbm)
+  p3 = cbind(p3, level1_s3_rf)
+  p3 = cbind(p3, level1_s3_xgb)
+
+  p4 = cbind(s4, level1_s4_gbm)
+  p4 = cbind(p4, level1_s4_rf)
+  p4 = cbind(p4, level1_s4_xgb)
+
+  p5 = cbind(s5, level1_s5_gbm)
+  p5 = cbind(p5, level1_s5_rf)
+  p5 = cbind(p5, level1_s5_xgb)
+
+  p6 = cbind(t1_test, level1_test_gbm)
+  p6 = cbind(p6, level1_test_rf)
+  p6 = cbind(p6, level1_test_xgb)
+
+  #gbm stacker Level 2
+  level2_test_gbm =  stacking_gbm(rbind(p1, p2, p3, p4, p5), p6)[, c("high_gbm", "low_gbm", "medium_gbm")]
+  level2_test_gbm = cbind(t1_test$listing_id, level2_test_gbm)
+  colnames(level2_test_gbm) = c("listing_id", "high", "low", "medium")
   
-  mlr <- multinom(interest_level ~ ., data = final_train)
-  predicted_mlr = as.data.frame(predict(mlr, final_test, type="probs"))
-  predicted_mlr = cbind(t1_test$listing_id, predicted_mlr)
-  colnames(predicted_mlr)[colnames(predicted_mlr) == "t1_test$listing_id"] = "listing_id"
-  write.csv(predicted_mlr, "stack_6.csv", row.names = FALSE)
+  #xgb stacker Level 2
+  level2_test_xgb =  set_xgb(rbind(p1, p2, p3, p4, p5), p6)[, c("high_xgb", "low_xgb", "medium_xgb")]
+  level2_test_xgb = cbind(t1_test$listing_id, level2_test_xgb)
+  colnames(level2_test_xgb) = c("listing_id", "high", "low", "medium")
+  
+  #Getting it all together
+  # final_train = cbind(level1_gbm, level1_xgb, level1_rf)
+  # final_test = cbind(level1_test_gbm, level1_test_xgb, level1_test_rf)
+  # final_train$interest_level = as.factor(c(as.vector(s1$interest_level), as.vector(s2$interest_level), as.vector(s3$interest_level), as.vector(s4$interest_level), as.vector(s5$interest_level)))
+  # mlr <- multinom(interest_level ~ ., data = final_train)
+  # predicted_mlr = as.data.frame(predict(mlr, final_test, type="probs"))
+  # predicted_mlr = cbind(t1_test$listing_id, predicted_mlr)
+  # colnames(predicted_mlr)[colnames(predicted_mlr) == "t1_test$listing_id"] = "listing_id"
+  
+  level2_ensemble = cbind(level2_test_gbm$listing_id, (level2_test_gbm[, 2:4] + level2_test_xgb[, 2:4])/2)
+  colnames(level2_ensemble) = c("listing_id", "high", "low", "medium")
+  write.csv(level2_ensemble, "stack_8.csv", row.names = FALSE)
   
   # level2_xgb = set_xgb(s_df, level2_s3)[, c("high", "low", "medium")]
   # print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(level2_gbm[, c("high", "low", "medium")])))
