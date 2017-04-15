@@ -2013,6 +2013,11 @@ validate_stacking = function(t1_train, t1_test){
   level2_test_xgb =  set_xgb(rbind(p1, p2, p3, p4, p5), p6)[, c("high_xgb", "low_xgb", "medium_xgb")]
   level2_test_xgb = cbind(t1_test$listing_id, level2_test_xgb)
   colnames(level2_test_xgb) = c("listing_id", "high", "low", "medium")
+
+  #rf stacker Level 2
+  level2_test_rf =  stacking_rf(rbind(p1, p2, p3, p4, p5), p6)[, c("high_rf", "low_rf", "medium_rf")]
+  level2_test_rf = cbind(t1_test$listing_id, level2_test_rf)
+  colnames(level2_test_rf) = c("listing_id", "high", "low", "medium")
   
   #Getting it all together
   # final_train = cbind(level1_gbm, level1_xgb, level1_rf)
@@ -2023,9 +2028,9 @@ validate_stacking = function(t1_train, t1_test){
   # predicted_mlr = cbind(t1_test$listing_id, predicted_mlr)
   # colnames(predicted_mlr)[colnames(predicted_mlr) == "t1_test$listing_id"] = "listing_id"
   
-  level2_ensemble = cbind(level2_test_gbm$listing_id, (level2_test_gbm[, 2:4] + level2_test_xgb[, 2:4])/2)
+  level2_ensemble = cbind(level2_test_gbm$listing_id, (level2_test_gbm[, 2:4] + level2_test_xgb[, 2:4] + level2_test_rf[, 2:4])/3)
   colnames(level2_ensemble) = c("listing_id", "high", "low", "medium")
-  write.csv(level2_ensemble, "stack_8.csv", row.names = FALSE)
+  write.csv(level2_ensemble, "stack_9.csv", row.names = FALSE)
   
   # level2_xgb = set_xgb(s_df, level2_s3)[, c("high", "low", "medium")]
   # print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(level2_gbm[, c("high", "low", "medium")])))
