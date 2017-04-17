@@ -810,6 +810,7 @@ get_manager_scores = function(t1, t2){
   # t2$price_ratio_manager_median = t2$price/t2$manager_median_price
 
   t2$manager_opportunity = (t2$price - t2$manager_median_price)/t2$manager_median_price
+  t2$manager_opportunity[is.na(t2$manager_opportunity)] = 0
   
   # t2$manager_opportunity_pr = (t2$price_per_room - t2$manager_median_price)/t2$manager_median_price
   t2$manager_median_price = NULL
@@ -1013,7 +1014,7 @@ get_nbd_scores = function(t1, t2){
   t1$neighborhood = NULL
   
   t2 = left_join(t2, as.data.table(neighborhood_agg), by = "neighborhood")
-  # t2$neighborhood_score[is.na(t2$neighborhood_score)] = median(t2$neighborhood_score, na.rm = TRUE)
+  t2$neighborhood_score[is.na(t2$neighborhood_score)] = median(t2$neighborhood_score, na.rm = TRUE)
   t2$neighborhood = NULL
   
   return(list(t1, t2))
@@ -1058,7 +1059,7 @@ get_borough_scores = function(t1, t2){
   t1$borough = NULL
   
   t2 = left_join(t2, as.data.table(borough_agg), by = "borough")
-  # t2$borough_score[is.na(t2$borough_score)] = median(t2$borough_score, na.rm = TRUE)
+  t2$borough_score[is.na(t2$borough_score)] = median(t2$borough_score, na.rm = TRUE)
   t2$borough = NULL
   
   return(list(t1, t2))
@@ -1505,7 +1506,7 @@ stacking_gbm = function(t1, t2){
   return(pred_df_gbm)
 }
 
-stacking_svm = function(t1, t2){
+stacking_xt = function(t1, t2){
   
   street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
   
@@ -1620,20 +1621,15 @@ stacking_svm = function(t1, t2){
   # t1= na.omit(t1)
   # t2 = na.omit(t2)
   
-  t1_y = t1$interest_level
+  t1_y = as.factor(t1$interest_level)
   t1$interest_level = NULL
-  t2$interest_level = NULL
 
-  print(unlist(lapply(t1, function(x) any(is.na(x)))))
-  print(unlist(lapply(t2, function(x) any(is.na(x)))))
+  xt_model = extraTrees(t1, t1_y, ntree = 100)
+  pred_df_xt = as.data.frame(predict(xt_model, t2, probability = TRUE))
+
+  colnames(pred_df_xt) = c("high_xt", "low_xt", "medium_xt")
   
-  svm_model = extraTrees(t1, t1_y, ntree = 500)
-  pred_df_svm = as.data.frame(predict(svm_model, t2, probability = TRUE))
-  print(str(pred_df_svm))
-  
-  colnames(pred_df_svm) = c("high_svm", "low_svm", "medium_svm")
-  
-  return (pred_df_svm)
+  return (pred_df_xt)
 }
 
 stacking_rf = function(t1, t2){
@@ -2140,25 +2136,19 @@ validate_stacking = function(t1_train, t1_test){
   level2_test_gbm = cbind(t1_test$listing_id, level2_test_gbm)
   colnames(level2_test_gbm) = c("listing_id", "high", "low", "medium")
 
-  #svm stacker Level 2
-  
   #Testing Extra Trees  
-  svm_df = rbind(p1, p2, p3, p4)
-  svm_df$X = NULL
-  svm_df$relevant_features = NULL
-  svm_df$street_display_sim = NULL
-  svm_df$interest_level = as.factor(svm_df$interest_level)
-
-  p5$X = NULL
-  p5$interest_level = as.factor(p5$interest_level)
-  p5$relevant_features = NULL
-  p5$street_display_sim = NULL
-  level2_test_svm =  stacking_svm(svm_df, p5)[, c("high_svm", "low_svm", "medium_svm")]
-
+  xt_df = rbind(p1, p2, p3, p4, p5)
+  xt_df$X = NULL
+  xt_df$relevant_features = NULL
+  xt_df$street_display_sim = NULL
+  xt_df$interest_level = as.factor(xt_df$interest_level)
+  p6$X = NULL
+  p6$relevant_features = NULL
+  p6$street_display_sim = NULL
   #Real testing  
-  level2_test_svm =  stacking_svm(rbind(p1, p2, p3, p4, p5), p6)[, c("high_svm", "low_svm", "medium_svm")]
-  level2_test_svm = cbind(t1_test$listing_id, level2_test_svm)
-  colnames(level2_test_svm) = c("listing_id", "high", "low", "medium")
+  level2_test_xt =  stacking_xt(xt_df, p6)[, c("high_xt", "low_xt", "medium_xt")]
+  level2_test_xt = cbind(t1_test$listing_id, level2_test_xt)
+  colnames(level2_test_xt) = c("listing_id", "high", "low", "medium")
   
   #xgb stacker Level 2
   level2_test_xgb =  set_xgb(rbind(p1, p2, p3, p4, p5), p6)[, c("high_xgb", "low_xgb", "medium_xgb")]
