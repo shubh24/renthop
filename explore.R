@@ -1505,6 +1505,137 @@ stacking_gbm = function(t1, t2){
   return(pred_df_gbm)
 }
 
+stacking_svm = function(t1, t2){
+  
+  street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
+  
+  street_address_df$street_int_id = as.integer(as.factor(street_address_df$display_address))
+  street_count_df = as.data.frame(table(as.factor(street_address_df$street_int_id)))
+  colnames(street_count_df) = c("street_int_id", "street_count")
+  street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
+  
+  street_address_df = merge(street_address_df, street_count_df, by = "street_int_id")
+  
+  t1 = merge(t1, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+  t2 = merge(t2, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+  
+  # t1$street_int_id = NULL
+  t1$display_address = NULL
+  # t2$street_int_id = NULL
+  t2$display_address = NULL
+  
+  manager_int_df = rbind(t1[, c("listing_id", "manager_id")], t2[, c("listing_id", "manager_id")])
+  manager_int_df$manager_int_id = as.integer(as.factor(manager_int_df$manager_id))
+  t1 = left_join(t1, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+  t2 = left_join(t2, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+  
+  # t1 = get_last_active(t1)
+  # t2 = get_last_active(t2)
+  
+  # time_res = get_time_scores(t1, t2)
+  # t1 = time_res[[1]]
+  # t2 = time_res[[2]]
+  
+  cluster_res = get_clusters(t1, t2)
+  t1 = cluster_res[[1]]
+  t2 = cluster_res[[2]]
+  
+  borough_res = get_borough_scores(t1, t2)
+  t1 = borough_res[[1]]
+  t2 = borough_res[[2]]
+  
+  nbd_manager_res = get_specialized_mangers(t1, t2)
+  t1 = nbd_manager_res[[1]]
+  t2 = nbd_manager_res[[2]]
+  
+  street_res = get_street_opportunity(t1, t2)
+  t1 = street_res[[1]]
+  t2 = street_res[[2]]
+  
+  # multi_town_res = get_multi_town(t1, t2)
+  # t1 = multi_town_res[[1]]
+  # t2 = multi_town_res[[2]]
+  
+  mtb_opp_res = get_manager_town_opp(t1, t2)
+  t1 = mtb_opp_res[[1]]
+  t2 = mtb_opp_res[[2]]
+  
+  mb_count_res = get_manager_building_count(t1, t2)
+  t1 = mb_count_res[[1]]
+  t2 = mb_count_res[[2]]
+  
+  # ms_count_res = get_manager_address_count(t1, t2)
+  # t1 = ms_count_res[[1]]
+  # t2 = ms_count_res[[2]]
+  
+  manager_res = get_manager_scores(t1, t2)
+  t1 = manager_res[[1]]
+  t2 = manager_res[[2]]
+  
+  hour_res = get_hour_freq(t1, t2)
+  t1 = hour_res[[1]]
+  t2 = hour_res[[2]]
+  
+  nbd_res = get_nbd_scores(t1, t2)
+  t1 = nbd_res[[1]]
+  t2 = nbd_res[[2]]
+  
+  # town_res = get_town_opportunity(t1, t2)
+  # t1 = town_res[[1]]
+  # t2 = town_res[[2]]
+  # 
+  # bedroom_res = get_bedroom_opportunity(t1, t2)
+  # t1 = bedroom_res[[1]]
+  # t2 = bedroom_res[[2]]
+  
+  listing_res = get_listing_outliers(t1, t2) 
+  t1 = listing_res[[1]]
+  t2 = listing_res[[2]]
+  
+  t1$building_id = NULL
+  t2$building_id = NULL
+  t1$town = NULL
+  t2$town = NULL
+  t1$street_type = NULL
+  t2$street_type = NULL
+  
+  t1$created = NULL
+  t2$created = NULL
+  
+  t1$wday = NULL
+  t2$wday = NULL
+
+  t1$bathrooms_whole = NULL
+  t1$zero_building_id = NULL
+  t1$zero_photos = NULL
+  t1$no_fee = NULL
+  t1$featured = NULL
+
+  t2$bathrooms_whole = NULL
+  t2$zero_building_id = NULL
+  t2$zero_photos = NULL
+  t2$no_fee = NULL
+  t2$featured = NULL
+
+  # t1= na.omit(t1)
+  # t2 = na.omit(t2)
+  
+  t1_y = t1$interest_level
+  t1$interest_level = NULL
+  t2$interest_level = NULL
+
+  print(unlist(lapply(t1, function(x) any(is.na(x)))))
+  print(unlist(lapply(t2, function(x) any(is.na(x)))))
+  
+  svm_model = extraTrees(t1, t1_y, ntree = 500)
+  pred_df_svm = as.data.frame(predict(svm_model, t2, probability = TRUE))
+  print(str(pred_df_svm))
+  
+  colnames(pred_df_svm) = c("high_svm", "low_svm", "medium_svm")
+  
+  return (pred_df_svm)
+}
+
 stacking_rf = function(t1, t2){
   
   street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
@@ -2008,6 +2139,26 @@ validate_stacking = function(t1_train, t1_test){
   level2_test_gbm =  stacking_gbm(rbind(p1, p2, p3, p4, p5), p6)[, c("high_gbm", "low_gbm", "medium_gbm")]
   level2_test_gbm = cbind(t1_test$listing_id, level2_test_gbm)
   colnames(level2_test_gbm) = c("listing_id", "high", "low", "medium")
+
+  #svm stacker Level 2
+  
+  #Testing Extra Trees  
+  svm_df = rbind(p1, p2, p3, p4)
+  svm_df$X = NULL
+  svm_df$relevant_features = NULL
+  svm_df$street_display_sim = NULL
+  svm_df$interest_level = as.factor(svm_df$interest_level)
+
+  p5$X = NULL
+  p5$interest_level = as.factor(p5$interest_level)
+  p5$relevant_features = NULL
+  p5$street_display_sim = NULL
+  level2_test_svm =  stacking_svm(svm_df, p5)[, c("high_svm", "low_svm", "medium_svm")]
+
+  #Real testing  
+  level2_test_svm =  stacking_svm(rbind(p1, p2, p3, p4, p5), p6)[, c("high_svm", "low_svm", "medium_svm")]
+  level2_test_svm = cbind(t1_test$listing_id, level2_test_svm)
+  colnames(level2_test_svm) = c("listing_id", "high", "low", "medium")
   
   #xgb stacker Level 2
   level2_test_xgb =  set_xgb(rbind(p1, p2, p3, p4, p5), p6)[, c("high_xgb", "low_xgb", "medium_xgb")]
