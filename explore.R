@@ -27,6 +27,7 @@ ny_lon <- -73.968285
 
 library(h2o)
 h2o.init()
+h2o.removeAll() #clean slate
 
 df = fromJSON("train.json")
 test = fromJSON("test.json")
@@ -320,6 +321,8 @@ dl_h2o = function(t1, t2){
   feature_names = feature_names[!feature_names %in% c("created")]
   feature_names = feature_names[!feature_names %in% c("interest_level")]
   
+  feature_names = c("high_xgb", "high_gbm","high_rf", "low_xgb", "low_gbm","low_rf", "medium_xgb", "medium_gbm","medium_rf")
+  
   train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
   
@@ -329,14 +332,19 @@ dl_h2o = function(t1, t2){
     # validation_frame = valid, # validation dataset: used for scoring and early stopping
     x = feature_names,
     y = "interest_level",
-    activation = "Rectifier", # default (a.k.a Relu)
-    hidden = c(200, 200, 200),    # default = 2 hidden layers with 200 neurons each
-    epochs = 100, # How many times the dataset should be iterated
+    activation = "Maxout", # default (a.k.a Relu)
+    hidden = c(25, 3),    # default = 2 hidden layers with 200 neurons each
+    epochs = 10000, # How many times the dataset should be iterated
+    stopping_rounds = 5,
+    stopping_metric = "logloss",
+    stopping_tolerance = 0.0001,
     variable_importances = TRUE # allows obtaining the variable importance, not enabled by default
   )
   
   print(as.data.frame(h2o.varimp(dl1)))
-  res = as.data.frame(predict(dl1, test_h2o))
+  
+  res = as.data.frame(predict(dl1, test_h2o))[, c("high", "low", "medium")]
+  colnames(res) = c("high_dl", "low_dl", "medium_dl")
   
   return(res)
 }
@@ -1544,6 +1552,105 @@ stacking_gbm = function(t1, t2){
   return(pred_df_gbm)
 }
 
+stacking_dl = function(t1, t2){
+  
+  street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
+  
+  street_address_df$street_int_id = as.integer(as.factor(street_address_df$display_address))
+  street_count_df = as.data.frame(table(as.factor(street_address_df$street_int_id)))
+  colnames(street_count_df) = c("street_int_id", "street_count")
+  street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
+  
+  street_address_df = merge(street_address_df, street_count_df, by = "street_int_id")
+  
+  t1 = merge(t1, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+  t2 = merge(t2, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+  
+  # t1$street_int_id = NULL
+  t1$display_address = NULL
+  # t2$street_int_id = NULL
+  t2$display_address = NULL
+  
+  manager_int_df = rbind(t1[, c("listing_id", "manager_id")], t2[, c("listing_id", "manager_id")])
+  manager_int_df$manager_int_id = as.integer(as.factor(manager_int_df$manager_id))
+  t1 = left_join(t1, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+  t2 = left_join(t2, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+  
+  # t1 = get_last_active(t1)
+  # t2 = get_last_active(t2)
+  
+  # time_res = get_time_scores(t1, t2)
+  # t1 = time_res[[1]]
+  # t2 = time_res[[2]]
+  
+  cluster_res = get_clusters(t1, t2)
+  t1 = cluster_res[[1]]
+  t2 = cluster_res[[2]]
+  
+  borough_res = get_borough_scores(t1, t2)
+  t1 = borough_res[[1]]
+  t2 = borough_res[[2]]
+  
+  nbd_manager_res = get_specialized_mangers(t1, t2)
+  t1 = nbd_manager_res[[1]]
+  t2 = nbd_manager_res[[2]]
+  
+  street_res = get_street_opportunity(t1, t2)
+  t1 = street_res[[1]]
+  t2 = street_res[[2]]
+  
+  # multi_town_res = get_multi_town(t1, t2)
+  # t1 = multi_town_res[[1]]
+  # t2 = multi_town_res[[2]]
+  
+  mtb_opp_res = get_manager_town_opp(t1, t2)
+  t1 = mtb_opp_res[[1]]
+  t2 = mtb_opp_res[[2]]
+  
+  mb_count_res = get_manager_building_count(t1, t2)
+  t1 = mb_count_res[[1]]
+  t2 = mb_count_res[[2]]
+  
+  # ms_count_res = get_manager_address_count(t1, t2)
+  # t1 = ms_count_res[[1]]
+  # t2 = ms_count_res[[2]]
+  
+  manager_res = get_manager_scores(t1, t2)
+  t1 = manager_res[[1]]
+  t2 = manager_res[[2]]
+  
+  hour_res = get_hour_freq(t1, t2)
+  t1 = hour_res[[1]]
+  t2 = hour_res[[2]]
+  
+  nbd_res = get_nbd_scores(t1, t2)
+  t1 = nbd_res[[1]]
+  t2 = nbd_res[[2]]
+  
+  # town_res = get_town_opportunity(t1, t2)
+  # t1 = town_res[[1]]
+  # t2 = town_res[[2]]
+  # 
+  # bedroom_res = get_bedroom_opportunity(t1, t2)
+  # t1 = bedroom_res[[1]]
+  # t2 = bedroom_res[[2]]
+  
+  listing_res = get_listing_outliers(t1, t2) 
+  t1 = listing_res[[1]]
+  t2 = listing_res[[2]]
+  
+  t1$building_id = NULL
+  t2$building_id = NULL
+  t1$town = NULL
+  t2$town = NULL
+  t1$street_type = NULL
+  t2$street_type = NULL
+  
+  pred_df_dl = dl_h2o(t1, t2)
+  
+  return(pred_df_dl)
+}
+
 stacking_xt = function(t1, t2){
   
   street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
@@ -2396,6 +2503,11 @@ validate_stacking = function(t1_train, t1_test){
   level2_test_gbm = cbind(t1_test$listing_id, level2_test_gbm)
   colnames(level2_test_gbm) = c("listing_id", "high", "low", "medium")
 
+  #dl stacker Level 2
+  level2_test_dl =  stacking_dl(rbind(p1, p2, p3, p4, p5), p6)[, c("high_dl", "low_dl", "medium_dl")]
+  level2_test_dl = cbind(t1_test$listing_id, level2_test_dl)
+  colnames(level2_test_dl) = c("listing_id", "high", "low", "medium")
+  
   #Testing Extra Trees  
   # xt_df = rbind(p1, p2, p3, p4, p5)
   # xt_df$relevant_features = NULL
@@ -2438,10 +2550,10 @@ validate_stacking = function(t1_train, t1_test){
   # predicted_mlr = cbind(t1_test$listing_id, predicted_mlr)
   # colnames(predicted_mlr)[colnames(predicted_mlr) == "t1_test$listing_id"] = "listing_id"
   
-  level2_ensemble = cbind(level2_test_gbm$listing_id, (level2_test_gbm[, 2:4] + level2_test_xgb[, 2:4] + level2_test_rf[, 2:4])/3)
+  level2_ensemble = cbind(level2_test_gbm$listing_id, (level2_test_gbm[, 2:4] + level2_test_xgb[, 2:4] + level2_test_rf[, 2:4] + level2_test_dl[, 2:4])/4)
   colnames(level2_ensemble) = c("listing_id", "high", "low", "medium")
   write.csv(level2_ensemble, "stack_11.csv", row.names = FALSE)
-  
+
   # level2_xgb = set_xgb(s_df, level2_s3)[, c("high", "low", "medium")]
   # print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(level2_gbm[, c("high", "low", "medium")])))
   
