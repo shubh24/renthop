@@ -17,7 +17,7 @@ library(geosphere)
 library(RecordLinkage)
 library(XLConnect)
 library(extraTrees)
-
+library(RLightGBM)
 #features to implement
 #adj/nouns usage
 #population density -- kind of locality
@@ -112,7 +112,8 @@ rf_h2o = function(t1, t2){
     
     feature_names = names(t1)
     feature_names = feature_names[! feature_names %in% c("created", "interest_level")]
-    print(feature_names)
+    # feature_names = c("high_xgb", "high_gbm", "high_rf", "low_xgb", "low_gbm", "low_rf", "medium_xgb", "medium_gbm", "low_rf")
+    
     train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
     test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
     
@@ -139,6 +140,22 @@ rf_h2o = function(t1, t2){
     colnames(sum_res) = c("listing_id", "high_rf", "low_rf", "medium_rf")
     
     return(sum_res)
+}
+
+lightgbm = function(t1, t2){
+  
+  # feature_names = names(t1)
+  # feature_names = feature_names[! feature_names %in% c("created", "interest_level")]
+  # feature_names = c("high_xgb", "high_gbm", "high_rf", "low_xgb", "low_gbm", "low_rf", "medium_xgb", "medium_gbm", "low_rf")
+  t1$created = NULL
+  t2$created = NULL
+
+  model = caretModel.LGBM()
+  fit = train(interest_level ~ ., data = t1, method = model, verbosity = 0)  
+
+  res <- predict(fit, t2, type = "prob")
+  
+  return(res)
 }
 
 glm_h2o = function(t1, t2){
@@ -321,7 +338,7 @@ dl_h2o = function(t1, t2){
   feature_names = feature_names[!feature_names %in% c("created")]
   feature_names = feature_names[!feature_names %in% c("interest_level")]
   
-  feature_names = c("high_xgb", "high_gbm","high_rf", "low_xgb", "low_gbm","low_rf", "medium_xgb", "medium_gbm","medium_rf")
+  # feature_names = c("high_xgb", "high_gbm","high_rf", "low_xgb", "low_gbm","low_rf", "medium_xgb", "medium_gbm","medium_rf")
   
   train_h2o = h2o.uploadFile("./t1.csv.gz", destination_frame = "train")
   test_h2o = h2o.uploadFile("./t2.csv.gz", destination_frame = "test")
@@ -396,8 +413,7 @@ generate_df = function(df, train_flag){
       t1$relevant_features = rowSums(strdetect_df_test)/t1$n_features
     }
     
-    t1$total_days = (t1$month - 4.0)*30 + t1$mday +  t1$hour/25.0
-    # t1$slope_listing_days = (t1$listing_id - min(t1$listing_id))/t1$total_days
+    t1$total_days = as.integer((t1$month - 4.0)*30 + t1$mday +  t1$hour/25.0)
     t1$month = NULL
     
     # t1$caps_count = sapply(regmatches(as.vector(t1$description), gregexpr("[A-Z]", as.vector(t1$description), perl=TRUE)), length)
@@ -1329,7 +1345,7 @@ get_listing_outliers = function(t1, t2){
   colnames(median_listing) = c("yday", "median_listing")
   listing_df = merge(listing_df, median_listing, by = "yday")
   
-  listing_df$outlier = (listing_df$listing_id - listing_df$median_listing)/listing_df$median_listing
+  listing_df$outlier = (listing_df$listing_id - listing_df$median_listing)
   listing_df$median_listing = NULL
   
   t1 = merge(t1, listing_df[, c("listing_id", "outlier")], by = "listing_id")
@@ -1451,6 +1467,105 @@ validate_gbm = function(t1){
 
   return (res_val[, c("high", "low", "medium")])
   
+}
+
+stacking_lightgbm = function(t1, t2){
+  
+  street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
+  
+  street_address_df$street_int_id = as.integer(as.factor(street_address_df$display_address))
+  street_count_df = as.data.frame(table(as.factor(street_address_df$street_int_id)))
+  colnames(street_count_df) = c("street_int_id", "street_count")
+  street_count_df$street_int_id = as.integer(street_count_df$street_int_id)
+  
+  street_address_df = merge(street_address_df, street_count_df, by = "street_int_id")
+  
+  t1 = merge(t1, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+  t2 = merge(t2, street_address_df[, c("listing_id", "street_count", "street_int_id")], by = "listing_id")
+  
+  # t1$street_int_id = NULL
+  t1$display_address = NULL
+  # t2$street_int_id = NULL
+  t2$display_address = NULL
+  
+  manager_int_df = rbind(t1[, c("listing_id", "manager_id")], t2[, c("listing_id", "manager_id")])
+  manager_int_df$manager_int_id = as.integer(as.factor(manager_int_df$manager_id))
+  t1 = left_join(t1, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+  t2 = left_join(t2, manager_int_df[, c("listing_id", "manager_int_id")], by = "listing_id")
+  
+  # t1 = get_last_active(t1)
+  # t2 = get_last_active(t2)
+  
+  # time_res = get_time_scores(t1, t2)
+  # t1 = time_res[[1]]
+  # t2 = time_res[[2]]
+  
+  cluster_res = get_clusters(t1, t2)
+  t1 = cluster_res[[1]]
+  t2 = cluster_res[[2]]
+  
+  borough_res = get_borough_scores(t1, t2)
+  t1 = borough_res[[1]]
+  t2 = borough_res[[2]]
+  
+  nbd_manager_res = get_specialized_mangers(t1, t2)
+  t1 = nbd_manager_res[[1]]
+  t2 = nbd_manager_res[[2]]
+  
+  street_res = get_street_opportunity(t1, t2)
+  t1 = street_res[[1]]
+  t2 = street_res[[2]]
+  
+  # multi_town_res = get_multi_town(t1, t2)
+  # t1 = multi_town_res[[1]]
+  # t2 = multi_town_res[[2]]
+  
+  mtb_opp_res = get_manager_town_opp(t1, t2)
+  t1 = mtb_opp_res[[1]]
+  t2 = mtb_opp_res[[2]]
+  
+  mb_count_res = get_manager_building_count(t1, t2)
+  t1 = mb_count_res[[1]]
+  t2 = mb_count_res[[2]]
+  
+  # ms_count_res = get_manager_address_count(t1, t2)
+  # t1 = ms_count_res[[1]]
+  # t2 = ms_count_res[[2]]
+  
+  manager_res = get_manager_scores(t1, t2)
+  t1 = manager_res[[1]]
+  t2 = manager_res[[2]]
+  
+  hour_res = get_hour_freq(t1, t2)
+  t1 = hour_res[[1]]
+  t2 = hour_res[[2]]
+  
+  nbd_res = get_nbd_scores(t1, t2)
+  t1 = nbd_res[[1]]
+  t2 = nbd_res[[2]]
+  
+  # town_res = get_town_opportunity(t1, t2)
+  # t1 = town_res[[1]]
+  # t2 = town_res[[2]]
+  # 
+  # bedroom_res = get_bedroom_opportunity(t1, t2)
+  # t1 = bedroom_res[[1]]
+  # t2 = bedroom_res[[2]]
+  
+  listing_res = get_listing_outliers(t1, t2) 
+  t1 = listing_res[[1]]
+  t2 = listing_res[[2]]
+  
+  t1$building_id = NULL
+  t2$building_id = NULL
+  t1$town = NULL
+  t2$town = NULL
+  t1$street_type = NULL
+  t2$street_type = NULL
+  
+  pred_df_gbm = lightgbm(t1, t2)
+  
+  return(pred_df_gbm)
 }
 
 stacking_gbm = function(t1, t2){
@@ -2435,6 +2550,9 @@ validate_stacking = function(t1_train, t1_test){
   # t1_train <- t1[sample, ]
   # t1_test <- t1[-sample, ]
 
+  t1_train$street_display_sim = NULL
+  t1_test$street_display_sim = NULL
+  
   s_label = t1_train$interest_level
   
   sample <- createFolds(factor(t1_train$interest_level), k = 5, list = TRUE)
@@ -2443,7 +2561,7 @@ validate_stacking = function(t1_train, t1_test){
   s3 = t1_train[sample$Fold3]
   s4 = t1_train[sample$Fold4]
   s5 = t1_train[sample$Fold5]
-
+    
   #stacker gbm
   level1_s5_gbm = stacking_gbm(rbind(s1,s2,s3,s4), s5)[, c("high_gbm", "low_gbm", "medium_gbm")]
   level1_s4_gbm = stacking_gbm(rbind(s1,s2,s3,s5), s4)[, c("high_gbm", "low_gbm", "medium_gbm")]
@@ -2454,15 +2572,15 @@ validate_stacking = function(t1_train, t1_test){
   level1_gbm = rbind(level1_s1_gbm, level1_s2_gbm, level1_s3_gbm, level1_s4_gbm, level1_s5_gbm)
   level1_test_gbm =  stacking_gbm(t1_train, t1_test)[, c("high_gbm", "low_gbm", "medium_gbm")]
 
-  #stacker rf
-  level1_s5_rf = stacking_rf(rbind(s1,s2,s3,s4), s5)[, c("high_rf", "low_rf", "medium_rf")]
-  level1_s4_rf = stacking_rf(rbind(s1,s2,s3,s5), s4)[, c("high_rf", "low_rf", "medium_rf")]
-  level1_s3_rf = stacking_rf(rbind(s1,s2,s4,s5), s3)[, c("high_rf", "low_rf", "medium_rf")]
-  level1_s2_rf = stacking_rf(rbind(s1,s3,s4,s5), s2)[, c("high_rf", "low_rf", "medium_rf")]
-  level1_s1_rf = stacking_rf(rbind(s2,s3,s4,s5), s1)[, c("high_rf", "low_rf", "medium_rf")]
-  
-  level1_rf = rbind(level1_s1_rf, level1_s2_rf, level1_s3_rf, level1_s4_rf, level1_s5_rf)
-  level1_test_rf =  stacking_rf(t1_train, t1_test)[, c("high_rf", "low_rf", "medium_rf")]
+  # #stacker rf
+  # level1_s5_rf = stacking_rf(rbind(s1,s2,s3,s4), s5)[, c("high_rf", "low_rf", "medium_rf")]
+  # level1_s4_rf = stacking_rf(rbind(s1,s2,s3,s5), s4)[, c("high_rf", "low_rf", "medium_rf")]
+  # level1_s3_rf = stacking_rf(rbind(s1,s2,s4,s5), s3)[, c("high_rf", "low_rf", "medium_rf")]
+  # level1_s2_rf = stacking_rf(rbind(s1,s3,s4,s5), s2)[, c("high_rf", "low_rf", "medium_rf")]
+  # level1_s1_rf = stacking_rf(rbind(s2,s3,s4,s5), s1)[, c("high_rf", "low_rf", "medium_rf")]
+  # 
+  # level1_rf = rbind(level1_s1_rf, level1_s2_rf, level1_s3_rf, level1_s4_rf, level1_s5_rf)
+  # level1_test_rf =  stacking_rf(t1_train, t1_test)[, c("high_rf", "low_rf", "medium_rf")]
   
   #xgb stacker
   level1_s5_xgb = set_xgb(rbind(s1,s2,s3,s4), s5)[, c("high_xgb", "low_xgb", "medium_xgb")]
@@ -2471,9 +2589,19 @@ validate_stacking = function(t1_train, t1_test){
   level1_s2_xgb = set_xgb(rbind(s1,s3,s4,s5), s2)[, c("high_xgb", "low_xgb", "medium_xgb")]
   level1_s1_xgb = set_xgb(rbind(s2,s3,s4,s5), s1)[, c("high_xgb", "low_xgb", "medium_xgb")]
 
-  level1_xgb = rbind(level2_s1_xgb, level2_s2_xgb, level2_s3_xgb, level2_s4_xgb, level2_s5_xgb)
+  level1_xgb = rbind(level1_s1_xgb, level1_s2_xgb, level1_s3_xgb, level1_s4_xgb, level1_s5_xgb)
   level1_test_xgb =  set_xgb(t1_train, t1_test)[, c("high_xgb", "low_xgb", "medium_xgb")]
 
+  # #dl stacker
+  # level1_s5_dl = stacking_dl(rbind(s1,s2,s3,s4), s5)[, c("high_dl", "low_dl", "medium_dl")]
+  # level1_s4_dl = stacking_dl(rbind(s1,s2,s3,s5), s4)[, c("high_dl", "low_dl", "medium_dl")]
+  # level1_s3_dl = stacking_dl(rbind(s1,s2,s4,s5), s3)[, c("high_dl", "low_dl", "medium_dl")]
+  # level1_s2_dl = stacking_dl(rbind(s1,s3,s4,s5), s2)[, c("high_dl", "low_dl", "medium_dl")]
+  # level1_s1_dl = stacking_dl(rbind(s2,s3,s4,s5), s1)[, c("high_dl", "low_dl", "medium_dl")]
+  # 
+  # level1_dl = rbind(level1_s1_dl, level1_s2_dl, level1_s3_dl, level1_s4_dl, level1_s5_dl)
+  # level1_test_dl =  stacking_dl(t1_train, t1_test)[, c("high_dl", "low_dl", "medium_dl")]
+  
   p1 = cbind(s1, level1_s1_gbm)
   p1 = cbind(p1, level1_s1_rf)
   p1 = cbind(p1, level1_s1_xgb)
@@ -2498,6 +2626,11 @@ validate_stacking = function(t1_train, t1_test){
   p6 = cbind(p6, level1_test_rf)
   p6 = cbind(p6, level1_test_xgb)
 
+  #lightgbm stacker level 2
+  level2_test_lightgbm = stacking_lightgbm(rbind(p1, p2, p3, p4, p5), p6)
+  level2_test_lightgbm = cbind(t1_test$listing_id, level2_test_lightgbm)
+  colnames(level2_test_lightgbm) = c("listing_id", "high", "low", "medium")
+  
   #gbm stacker Level 2
   level2_test_gbm =  stacking_gbm(rbind(p1, p2, p3, p4, p5), p6)[, c("high_gbm", "low_gbm", "medium_gbm")]
   level2_test_gbm = cbind(t1_test$listing_id, level2_test_gbm)
