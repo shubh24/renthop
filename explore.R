@@ -2569,14 +2569,17 @@ validate_stacking = function(t1_train, t1_test){
   t1_train$relevant_features = NULL
   t1_test$relevant_features = NULL
   
+  t1_train$id_image_diff = t1_train$listing_id - t1_train$listing_image
+  t1_test$id_image_diff = t1_test$listing_id - t1_test$listing_image
+  
   s_label = t1_train$interest_level
   
   sample <- createFolds(factor(t1_train$interest_level), k = 5, list = TRUE)
-  s1 = t1_train[sample$Fold1]
-  s2 = t1_train[sample$Fold2]
-  s3 = t1_train[sample$Fold3]
-  s4 = t1_train[sample$Fold4]
-  s5 = t1_train[sample$Fold5]
+  s1 = t1_train[sample$Fold1, ]
+  s2 = t1_train[sample$Fold2, ]
+  s3 = t1_train[sample$Fold3, ]
+  s4 = t1_train[sample$Fold4, ]
+  s5 = t1_train[sample$Fold5, ]
     
   #stacker gbm
   level1_s5_gbm = stacking_gbm(rbind(s1,s2,s3,s4), s5)[, c("high_gbm", "low_gbm", "medium_gbm")]
@@ -2585,7 +2588,7 @@ validate_stacking = function(t1_train, t1_test){
   level1_s2_gbm = stacking_gbm(rbind(s1,s3,s4,s5), s2)[, c("high_gbm", "low_gbm", "medium_gbm")]
   level1_s1_gbm = stacking_gbm(rbind(s2,s3,s4,s5), s1)[, c("high_gbm", "low_gbm", "medium_gbm")]
   
-  level1_gbm = rbind(level1_s1_gbm, level1_s2_gbm, level1_s3_gbm, level1_s4_gbm, level1_s5_gbm)
+  # level1_gbm = rbind(level1_s1_gbm, level1_s2_gbm, level1_s3_gbm, level1_s4_gbm, level1_s5_gbm)
   level1_test_gbm =  stacking_gbm(t1_train, t1_test)[, c("high_gbm", "low_gbm", "medium_gbm")]
 
   #stacker rf
@@ -2595,7 +2598,7 @@ validate_stacking = function(t1_train, t1_test){
   level1_s2_rf = stacking_rf(rbind(s1,s3,s4,s5), s2)[, c("high_rf", "low_rf", "medium_rf")]
   level1_s1_rf = stacking_rf(rbind(s2,s3,s4,s5), s1)[, c("high_rf", "low_rf", "medium_rf")]
 
-  level1_rf = rbind(level1_s1_rf, level1_s2_rf, level1_s3_rf, level1_s4_rf, level1_s5_rf)
+  # level1_rf = rbind(level1_s1_rf, level1_s2_rf, level1_s3_rf, level1_s4_rf, level1_s5_rf)
   level1_test_rf =  stacking_rf(t1_train, t1_test)[, c("high_rf", "low_rf", "medium_rf")]
   
   #xgb stacker
@@ -2605,7 +2608,7 @@ validate_stacking = function(t1_train, t1_test){
   level1_s2_xgb = set_xgb(rbind(s1,s3,s4,s5), s2)[, c("high_xgb", "low_xgb", "medium_xgb")]
   level1_s1_xgb = set_xgb(rbind(s2,s3,s4,s5), s1)[, c("high_xgb", "low_xgb", "medium_xgb")]
 
-  level1_xgb = rbind(level1_s1_xgb, level1_s2_xgb, level1_s3_xgb, level1_s4_xgb, level1_s5_xgb)
+  # level1_xgb = rbind(level1_s1_xgb, level1_s2_xgb, level1_s3_xgb, level1_s4_xgb, level1_s5_xgb)
   level1_test_xgb =  set_xgb(t1_train, t1_test)[, c("high_xgb", "low_xgb", "medium_xgb")]
 
   # #dl stacker
@@ -2642,10 +2645,10 @@ validate_stacking = function(t1_train, t1_test){
   p6 = cbind(p6, level1_test_rf)
   p6 = cbind(p6, level1_test_xgb)
 
-  #lightgbm stacker level 2 -- Try going for only predicted vars(Like DL)
-  level2_test_lightgbm = stacking_lightgbm(rbind(p1, p2, p3, p4, p5), p6)
-  level2_test_lightgbm = cbind(t1_test$listing_id, level2_test_lightgbm)
-  colnames(level2_test_lightgbm) = c("listing_id", "high", "low", "medium")
+  # #lightgbm stacker level 2 -- Try going for only predicted vars(Like DL)
+  # level2_test_lightgbm = stacking_lightgbm(rbind(p1, p2, p3, p4, p5), p6)
+  # level2_test_lightgbm = cbind(t1_test$listing_id, level2_test_lightgbm)
+  # colnames(level2_test_lightgbm) = c("listing_id", "high", "low", "medium")
   
   #gbm stacker Level 2
   level2_test_gbm =  stacking_gbm(rbind(p1, p2, p3, p4, p5), p6)[, c("high_gbm", "low_gbm", "medium_gbm")]
@@ -2680,7 +2683,7 @@ validate_stacking = function(t1_train, t1_test){
   level2_test_xgb = cbind(t1_test$listing_id, level2_test_xgb)
   colnames(level2_test_xgb) = c("listing_id", "high", "low", "medium")
 
-  #rf stacker Level 2
+  #rf stacker Level 2 
   level2_test_rf =  stacking_rf(rbind(p1, p2, p3, p4, p5), p6)[, c("high_rf", "low_rf", "medium_rf")]
   level2_test_rf = cbind(t1_test$listing_id, level2_test_rf)
   colnames(level2_test_rf) = c("listing_id", "high", "low", "medium")
@@ -2708,7 +2711,27 @@ validate_stacking = function(t1_train, t1_test){
   lit_stack$high = (lit_stack$high.x + lit_stack$high.y)/2
   lit_stack$low = (lit_stack$low.x + lit_stack$low.y)/2
   lit_stack$medium = (lit_stack$medium.x + lit_stack$medium.y)/2
-  write.csv(lit_stack[, c("listing_id", "high", "low", "medium")], "lit_stack.csv", row.names = FALSE)
+  # write.csv(lit_stack[, c("listing_id", "high", "low", "medium")], "lit_stack_2.csv", row.names = FALSE)
+  
+  leakers = as.data.frame(t1_test[as.numeric(t1_test$id_image_diff) > 0 & !(is.na(t1_test$id_image_diff)) & t1_test$listing_image %in% t1_train$listing_id, c("listing_id", "listing_image")])
+  leakers = merge(leakers, t1_train[, c("listing_id", "interest_level")], by.x = "listing_image", by.y = "listing_id")
+  leakers$listing_image = NULL
+  
+  leakers_reverse = data.frame("listing_id" = t1_test[t1_test$listing_id %in% (t1_train$listing_image[as.numeric(t1_train$id_image_diff) > 0 & !(is.na(t1_train$id_image_diff)) & t1_train$listing_image %in% t1_test$listing_id]), c("listing_id")])
+  leakers_reverse = merge(leakers_reverse, t1_train[, c("listing_image", "interest_level")], by.x = "listing_id", by.y = "listing_image")
+  leakers_reverse$listing_image = NULL
+  
+  leakers = rbind(leakers, leakers_reverse)
+  leakers_expanded = cbind(leakers, model.matrix( ~ interest_level - 1, data = leakers))
+  leakers_expanded$interest_level = NULL
+  colnames(leakers_expanded) = c("listing_id", "high_leakers", "low_leakers", "medium_leakers")
+  
+  lit_stack = unique(left_join(lit_stack, leakers_expanded, by = "listing_id"))
+  lit_stack$high[!is.na(lit_stack$high_leakers)] = lit_stack$high_leakers[!is.na(lit_stack$high_leakers)]
+  lit_stack$low[!is.na(lit_stack$low_leakers)] = lit_stack$low_leakers[!is.na(lit_stack$low_leakers)]
+  lit_stack$medium[!is.na(lit_stack$medium_leakers)] = lit_stack$medium_leakers[!is.na(lit_stack$medium_leakers)]
+
+  write.csv(lit_stack[, c("listing_id", "high", "low", "medium")], "lit_stack_3.csv", row.names = FALSE)
   
   # level2_xgb = set_xgb(s_df, level2_s3)[, c("high", "low", "medium")]
   # print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(level2_gbm[, c("high", "low", "medium")])))
