@@ -49,6 +49,7 @@ subway_train = read.csv("subway_train.csv", stringsAsFactors = TRUE)
 subway_test = read.csv("subway_test.csv", stringsAsFactors = TRUE)
 
 image_time = read.csv("listing_image_time.csv", stringsAsFactors = FALSE)
+colnames(image_time) = c("listing_id", "time_stamp")
 
 it_is_lit = read.csv("it_is_lit.csv")
 
@@ -376,6 +377,7 @@ generate_df = function(df, train_flag){
                      ,building_id=as.factor(unlist(df$building_id))
                      ,created=as.POSIXct(unlist(df$created))
                      ,n_photos = as.numeric(sapply(df$photos, length))
+                     ,listing_image = as.numeric(sapply(unlist(sapply(df$photos, function(x) {if (length(x) > 0){x[1]} else{''}})), function(x) {substr(strsplit(x, "/")[[1]][5], 1, 7)}))
                      ,n_words = sapply(strsplit(as.character(df$description), "\\s+"), length)
                      ,n_description = as.numeric(sapply(df$description, nchar))
                      ,n_features = as.numeric(sapply(df$features, length))
@@ -526,6 +528,8 @@ generate_df = function(df, train_flag){
     t1$minutes = t1$hour*60 + t1$minute
     t1$hour = NULL
     t1$minute = NULL
+    
+    t1 = left_join(t1, image_time, by = "listing_id")
     
     return (t1)
 }
@@ -2772,7 +2776,7 @@ run_xgb = function(t1_train, train_y_train, t1_test, train_y_val){
   
 }
 
-t1 = generate_df(df, 1)
+t1_b = generate_df(df, 1)
 
 #class_price = aggregate(price ~ interest_level, data = t1, FUN = median)
 
@@ -2785,7 +2789,7 @@ t1 = generate_df(df, 1)
 # nbd_count$building_count = as.factor(nbd_count$building_count > 10)
 # t1 = merge(t1, nbd_count, by = "neighborhood")
 
-t2 = generate_df(test, 0)
+t2_b = generate_df(test, 0)
 
 # t2$price_ratio_high_median = t2$price/class_price$price[class_price$interest_level == "high"]
 # t2$price_ratio_low_median = t2$price/class_price$price[class_price$interest_level == "low"]
