@@ -48,6 +48,10 @@ town_test = read.csv("town_test.csv", stringsAsFactors = FALSE)
 subway_train = read.csv("subway_train.csv", stringsAsFactors = TRUE)
 subway_test = read.csv("subway_test.csv", stringsAsFactors = TRUE)
 
+image_time = read.csv("listing_image_time.csv", stringsAsFactors = FALSE)
+
+it_is_lit = read.csv("it_is_lit.csv")
+
 # strdetect_df = data.frame()
 # for (i in 1:nrow(t1)){
 #   print(i)
@@ -1471,6 +1475,9 @@ validate_gbm = function(t1){
 
 stacking_lightgbm = function(t1, t2){
   
+  t1$relevant_features = NULL
+  t2$relevant_features = NULL
+  
   street_address_df = rbind(t1[, c("listing_id", "display_address")], t2[, c("listing_id", "display_address")])
   
   street_address_df$street_int_id = as.integer(as.factor(street_address_df$display_address))
@@ -1562,6 +1569,9 @@ stacking_lightgbm = function(t1, t2){
   t2$town = NULL
   t1$street_type = NULL
   t2$street_type = NULL
+  
+  print(sum(is.na(t1)))
+  print(sum(is.na(t2)))
   
   pred_df_gbm = lightgbm(t1, t2)
   
@@ -2552,6 +2562,8 @@ validate_stacking = function(t1_train, t1_test){
 
   t1_train$street_display_sim = NULL
   t1_test$street_display_sim = NULL
+  t1_train$relevant_features = NULL
+  t1_test$relevant_features = NULL
   
   s_label = t1_train$interest_level
   
@@ -2572,15 +2584,15 @@ validate_stacking = function(t1_train, t1_test){
   level1_gbm = rbind(level1_s1_gbm, level1_s2_gbm, level1_s3_gbm, level1_s4_gbm, level1_s5_gbm)
   level1_test_gbm =  stacking_gbm(t1_train, t1_test)[, c("high_gbm", "low_gbm", "medium_gbm")]
 
-  # #stacker rf
-  # level1_s5_rf = stacking_rf(rbind(s1,s2,s3,s4), s5)[, c("high_rf", "low_rf", "medium_rf")]
-  # level1_s4_rf = stacking_rf(rbind(s1,s2,s3,s5), s4)[, c("high_rf", "low_rf", "medium_rf")]
-  # level1_s3_rf = stacking_rf(rbind(s1,s2,s4,s5), s3)[, c("high_rf", "low_rf", "medium_rf")]
-  # level1_s2_rf = stacking_rf(rbind(s1,s3,s4,s5), s2)[, c("high_rf", "low_rf", "medium_rf")]
-  # level1_s1_rf = stacking_rf(rbind(s2,s3,s4,s5), s1)[, c("high_rf", "low_rf", "medium_rf")]
-  # 
-  # level1_rf = rbind(level1_s1_rf, level1_s2_rf, level1_s3_rf, level1_s4_rf, level1_s5_rf)
-  # level1_test_rf =  stacking_rf(t1_train, t1_test)[, c("high_rf", "low_rf", "medium_rf")]
+  #stacker rf
+  level1_s5_rf = stacking_rf(rbind(s1,s2,s3,s4), s5)[, c("high_rf", "low_rf", "medium_rf")]
+  level1_s4_rf = stacking_rf(rbind(s1,s2,s3,s5), s4)[, c("high_rf", "low_rf", "medium_rf")]
+  level1_s3_rf = stacking_rf(rbind(s1,s2,s4,s5), s3)[, c("high_rf", "low_rf", "medium_rf")]
+  level1_s2_rf = stacking_rf(rbind(s1,s3,s4,s5), s2)[, c("high_rf", "low_rf", "medium_rf")]
+  level1_s1_rf = stacking_rf(rbind(s2,s3,s4,s5), s1)[, c("high_rf", "low_rf", "medium_rf")]
+
+  level1_rf = rbind(level1_s1_rf, level1_s2_rf, level1_s3_rf, level1_s4_rf, level1_s5_rf)
+  level1_test_rf =  stacking_rf(t1_train, t1_test)[, c("high_rf", "low_rf", "medium_rf")]
   
   #xgb stacker
   level1_s5_xgb = set_xgb(rbind(s1,s2,s3,s4), s5)[, c("high_xgb", "low_xgb", "medium_xgb")]
@@ -2626,7 +2638,7 @@ validate_stacking = function(t1_train, t1_test){
   p6 = cbind(p6, level1_test_rf)
   p6 = cbind(p6, level1_test_xgb)
 
-  #lightgbm stacker level 2
+  #lightgbm stacker level 2 -- Try going for only predicted vars(Like DL)
   level2_test_lightgbm = stacking_lightgbm(rbind(p1, p2, p3, p4, p5), p6)
   level2_test_lightgbm = cbind(t1_test$listing_id, level2_test_lightgbm)
   colnames(level2_test_lightgbm) = c("listing_id", "high", "low", "medium")
@@ -2636,10 +2648,10 @@ validate_stacking = function(t1_train, t1_test){
   level2_test_gbm = cbind(t1_test$listing_id, level2_test_gbm)
   colnames(level2_test_gbm) = c("listing_id", "high", "low", "medium")
 
-  #dl stacker Level 2
-  level2_test_dl =  stacking_dl(rbind(p1, p2, p3, p4, p5), p6)[, c("high_dl", "low_dl", "medium_dl")]
-  level2_test_dl = cbind(t1_test$listing_id, level2_test_dl)
-  colnames(level2_test_dl) = c("listing_id", "high", "low", "medium")
+  # #dl stacker Level 2
+  # level2_test_dl =  stacking_dl(rbind(p1, p2, p3, p4, p5), p6)[, c("high_dl", "low_dl", "medium_dl")]
+  # level2_test_dl = cbind(t1_test$listing_id, level2_test_dl)
+  # colnames(level2_test_dl) = c("listing_id", "high", "low", "medium")
   
   #Testing Extra Trees  
   # xt_df = rbind(p1, p2, p3, p4, p5)
@@ -2683,10 +2695,17 @@ validate_stacking = function(t1_train, t1_test){
   # predicted_mlr = cbind(t1_test$listing_id, predicted_mlr)
   # colnames(predicted_mlr)[colnames(predicted_mlr) == "t1_test$listing_id"] = "listing_id"
   
-  level2_ensemble = cbind(level2_test_gbm$listing_id, (level2_test_gbm[, 2:4] + level2_test_xgb[, 2:4] + level2_test_rf[, 2:4] + level2_test_dl[, 2:4])/4)
+  level2_ensemble = cbind(level2_test_gbm$listing_id, (level2_test_gbm[, 2:4] + level2_test_xgb[, 2:4] + level2_test_rf[, 2:4])/3)
   colnames(level2_ensemble) = c("listing_id", "high", "low", "medium")
-  write.csv(level2_ensemble, "stack_11.csv", row.names = FALSE)
+  write.csv(level2_ensemble, "stack_13.csv", row.names = FALSE)
 
+  #Averaging "it is lit" and stacker
+  lit_stack = merge(it_is_lit, level2_ensemble, by = "listing_id")
+  lit_stack$high = (lit_stack$high.x + lit_stack$high.y)/2
+  lit_stack$low = (lit_stack$low.x + lit_stack$low.y)/2
+  lit_stack$medium = (lit_stack$medium.x + lit_stack$medium.y)/2
+  write.csv(lit_stack[, c("listing_id", "high", "low", "medium")], "lit_stack.csv", row.names = FALSE)
+  
   # level2_xgb = set_xgb(s_df, level2_s3)[, c("high", "low", "medium")]
   # print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(level2_gbm[, c("high", "low", "medium")])))
   
