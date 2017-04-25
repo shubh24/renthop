@@ -51,7 +51,7 @@ subway_test = read.csv("subway_test.csv", stringsAsFactors = TRUE)
 image_time = read.csv("listing_image_time.csv", stringsAsFactors = FALSE)
 colnames(image_time) = c("listing_id", "time_stamp")
 
-it_is_lit = read.csv("it_is_lit.csv")
+it_is_lit = read.csv("it_is_lit_py.csv")
 
 # strdetect_df = data.frame()
 # for (i in 1:nrow(t1)){
@@ -422,9 +422,9 @@ generate_df = function(df, train_flag){
     t1$total_days = as.integer((t1$month - 4.0)*30 + t1$mday +  t1$hour/25.0)
     t1$month = NULL
     
-    # t1$caps_count = sapply(regmatches(as.vector(t1$description), gregexpr("[A-Z]", as.vector(t1$description), perl=TRUE)), length)
-    # t1$caps_count = t1$caps_count/nchar(t1$description)
-    # t1$bang_count = sapply(regmatches(as.vector(t1$description), gregexpr("!", as.vector(t1$description), perl=TRUE)), length)
+    t1$caps_count = sapply(regmatches(as.vector(t1$description), gregexpr("[A-Z]", as.vector(t1$description), perl=TRUE)), length)
+    t1$caps_count = t1$caps_count/nchar(t1$description)
+    t1$bang_count = sapply(regmatches(as.vector(t1$description), gregexpr("!", as.vector(t1$description), perl=TRUE)), length)
     
     sentiment = get_nrc_sentiment(t1$description)
     t1$sentiment = sentiment$positive/(sentiment$positive + sentiment$negative)
@@ -458,8 +458,8 @@ generate_df = function(df, train_flag){
     
     t1$bathrooms_whole = as.factor(as.integer(t1$bathrooms) == t1$bathrooms)
     t1$bed_bath_diff = t1$bedrooms - t1$bathrooms
-    # t1$street_number_provided = as.factor(grepl("\\d", t1$display_address))
-    # t1$phone_number_provided = as.factor(grepl("\\d\\d\\d-\\d\\d\\d-\\d\\d\\d\\d", df$description))
+    t1$street_number_provided = as.factor(grepl("\\d", t1$display_address))
+    t1$phone_number_provided = as.factor(grepl("\\d\\d\\d-\\d\\d\\d-\\d\\d\\d\\d", df$description))
 
     t1$street_type = as.character(sapply(t1$display_address, function(x){substring(tolower(tail(strsplit(x, " ")[[1]], n = 1)), 1, 2)}))
     street_type = as.data.frame(table(as.factor(t1$street_type)))
@@ -530,6 +530,13 @@ generate_df = function(df, train_flag){
     t1$minute = NULL
     
     t1 = left_join(t1, image_time, by = "listing_id")
+    # t1$time_stamp_date = as.POSIXct(t1$time_stamp, origin = "1970-01-01", tz="GMT")
+    # t1$image_month=as.numeric(sapply(t1$time_stamp_date, lubridate::month))
+    # t1$image_mday=as.numeric(sapply(t1$time_stamp_date, mday))
+    # t1$image_hour=as.numeric(sapply(t1$time_stamp_date, lubridate::hour))
+    # t1$image_minute=as.numeric(sapply(t1$time_stamp_date, lubridate::minute))
+    # t1$time_stamp = NULL
+    # t1$time_stamp_date = NULL
     
     return (t1)
 }
@@ -2341,7 +2348,7 @@ set_xgb = function(t1, t2){
     #perform training
     gbdt = xgb.train(params = xgb_params,
                      data = dtrain,
-                     nrounds = 2000,
+                     nrounds = 3000,
                      watchlist = list(train = dtrain),
                      print_every_n = 25,
                      early_stopping_rounds=50)
@@ -2711,27 +2718,27 @@ validate_stacking = function(t1_train, t1_test){
   lit_stack$high = (lit_stack$high.x + lit_stack$high.y)/2
   lit_stack$low = (lit_stack$low.x + lit_stack$low.y)/2
   lit_stack$medium = (lit_stack$medium.x + lit_stack$medium.y)/2
-  # write.csv(lit_stack[, c("listing_id", "high", "low", "medium")], "lit_stack_2.csv", row.names = FALSE)
+  write.csv(lit_stack[, c("listing_id", "high", "low", "medium")], "lit_stack_6.csv", row.names = FALSE)
   
-  leakers = as.data.frame(t1_test[as.numeric(t1_test$id_image_diff) > 0 & !(is.na(t1_test$id_image_diff)) & t1_test$listing_image %in% t1_train$listing_id, c("listing_id", "listing_image")])
-  leakers = merge(leakers, t1_train[, c("listing_id", "interest_level")], by.x = "listing_image", by.y = "listing_id")
-  leakers$listing_image = NULL
-  
-  leakers_reverse = data.frame("listing_id" = t1_test[t1_test$listing_id %in% (t1_train$listing_image[as.numeric(t1_train$id_image_diff) > 0 & !(is.na(t1_train$id_image_diff)) & t1_train$listing_image %in% t1_test$listing_id]), c("listing_id")])
-  leakers_reverse = merge(leakers_reverse, t1_train[, c("listing_image", "interest_level")], by.x = "listing_id", by.y = "listing_image")
-  leakers_reverse$listing_image = NULL
-  
-  leakers = rbind(leakers, leakers_reverse)
-  leakers_expanded = cbind(leakers, model.matrix( ~ interest_level - 1, data = leakers))
-  leakers_expanded$interest_level = NULL
-  colnames(leakers_expanded) = c("listing_id", "high_leakers", "low_leakers", "medium_leakers")
-  
-  lit_stack = unique(left_join(lit_stack, leakers_expanded, by = "listing_id"))
-  lit_stack$high[!is.na(lit_stack$high_leakers)] = lit_stack$high_leakers[!is.na(lit_stack$high_leakers)]
-  lit_stack$low[!is.na(lit_stack$low_leakers)] = lit_stack$low_leakers[!is.na(lit_stack$low_leakers)]
-  lit_stack$medium[!is.na(lit_stack$medium_leakers)] = lit_stack$medium_leakers[!is.na(lit_stack$medium_leakers)]
-
-  write.csv(lit_stack[, c("listing_id", "high", "low", "medium")], "lit_stack_3.csv", row.names = FALSE)
+  # leakers = as.data.frame(t1_test[as.numeric(t1_test$id_image_diff) > 0 & !(is.na(t1_test$id_image_diff)) & t1_test$listing_image %in% t1_train$listing_id, c("listing_id", "listing_image")])
+  # leakers = merge(leakers, t1_train[, c("listing_id", "interest_level")], by.x = "listing_image", by.y = "listing_id")
+  # leakers$listing_image = NULL
+  # 
+  # leakers_reverse = data.frame("listing_id" = t1_test[t1_test$listing_id %in% (t1_train$listing_image[as.numeric(t1_train$id_image_diff) > 0 & !(is.na(t1_train$id_image_diff)) & t1_train$listing_image %in% t1_test$listing_id]), c("listing_id")])
+  # leakers_reverse = merge(leakers_reverse, t1_train[, c("listing_image", "interest_level")], by.x = "listing_id", by.y = "listing_image")
+  # leakers_reverse$listing_image = NULL
+  # 
+  # leakers = rbind(leakers, leakers_reverse)
+  # leakers_expanded = cbind(leakers, model.matrix( ~ interest_level - 1, data = leakers))
+  # leakers_expanded$interest_level = NULL
+  # colnames(leakers_expanded) = c("listing_id", "high_leakers", "low_leakers", "medium_leakers")
+  # 
+  # lit_stack = unique(left_join(lit_stack, leakers_expanded, by = "listing_id"))
+  # lit_stack$high[!is.na(lit_stack$high_leakers)] = lit_stack$high_leakers[!is.na(lit_stack$high_leakers)]
+  # lit_stack$low[!is.na(lit_stack$low_leakers)] = lit_stack$low_leakers[!is.na(lit_stack$low_leakers)]
+  # lit_stack$medium[!is.na(lit_stack$medium_leakers)] = lit_stack$medium_leakers[!is.na(lit_stack$medium_leakers)]
+  # 
+  # write.csv(lit_stack[, c("listing_id", "high", "low", "medium")], "lit_stack_3.csv", row.names = FALSE)
   
   # level2_xgb = set_xgb(s_df, level2_s3)[, c("high", "low", "medium")]
   # print(MultiLogLoss(y_true = t1_test$interest_level, y_pred = as.matrix(level2_gbm[, c("high", "low", "medium")])))
